@@ -3,9 +3,9 @@ members = ["zincio", "examples", "zincio-hyper", "zincio-quinn"]
 resolver = "2"
 
 [workspace.dependencies]
-zincio = { version = "=0.2.21", default-features = false }
-zincio-hyper = "=0.2.21"
-zincio-quinn = "=0.2.21"
+zincio = { version = "=0.2.22", default-features = false }
+zincio-hyper = "=0.2.22"
+zincio-quinn = "=0.2.22"
 
 [patch.crates-io]
 zincio = { path = "./zincio" }

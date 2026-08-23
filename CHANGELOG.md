@@ -1,8 +1,8 @@
 # `zincio` change log
 
-## `zincio` UNRELEASED
+## `zincio` 0.2.22
 
-**Not yet released**
+**Released in August 23, 2026**
 
 - Renamed the project from `vibeio` to `zincio`.
 
