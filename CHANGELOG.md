@@ -1,4 +1,10 @@
-# `vibeio` change log
+# `zincio` change log
+
+## `zincio` UNRELEASED
+
+**Not yet released**
+
+- Renamed the project from `vibeio` to `zincio`.
 
 ## `vibeio` 0.2.21
 

@@ -1,0 +1,16 @@
+[package]
+name = "zincio-quinn"
+version = "0.2.21"
+edition = "2021"
+authors = ["Dorian Niemiec <dorian@ferron.sh>"]
+description = "A compatibility layer for using `quinn` with the `zincio` async runtime"
+license = "MIT"
+readme = "../README.md"
+keywords = ["async", "quinn", "quic"]
+categories = ["network-programming"]
+documentation = "https://docs.rs/zincio-quinn"
+repository = "https://github.com/ferronweb/zincio"
+
+[dependencies]
+quinn = { version = "0.11.9", default-features = false }
+zincio = { workspace = true, features = ["time"] }

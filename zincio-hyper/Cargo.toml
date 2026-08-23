@@ -1,0 +1,21 @@
+[package]
+name = "zincio-hyper"
+version = "0.2.21"
+edition = "2021"
+authors = ["Dorian Niemiec <dorian@ferron.sh>"]
+description = "A compatibility layer for using `hyper` with the `zincio` async runtime"
+license = "MIT"
+readme = "../README.md"
+keywords = ["async", "http", "hyper"]
+categories = ["network-programming", "web-programming"]
+documentation = "https://docs.rs/zincio-hyper"
+repository = "https://github.com/ferronweb/zincio"
+
+[dependencies]
+hyper = "1.8.1"
+tokio = "1.50.0"
+zincio = { workspace = true }
+
+[features]
+default = ["time"]
+time = ["zincio/time"]

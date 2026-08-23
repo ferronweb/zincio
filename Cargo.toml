@@ -1,13 +1,13 @@
 [workspace]
-members = ["vibeio", "examples", "vibeio-hyper", "vibeio-quinn"]
+members = ["zincio", "examples", "zincio-hyper", "zincio-quinn"]
 resolver = "2"
 
 [workspace.dependencies]
-vibeio = { version = "=0.2.21", default-features = false }
-vibeio-hyper = "=0.2.21"
-vibeio-quinn = "=0.2.21"
+zincio = { version = "=0.2.21", default-features = false }
+zincio-hyper = "=0.2.21"
+zincio-quinn = "=0.2.21"
 
 [patch.crates-io]
-vibeio = { path = "./vibeio" }
-vibeio-hyper = { path = "./vibeio-hyper" }
-vibeio-quinn = { path = "./vibeio-quinn" }
+zincio = { path = "./zincio" }
+zincio-hyper = { path = "./zincio-hyper" }
+zincio-quinn = { path = "./zincio-quinn" }
