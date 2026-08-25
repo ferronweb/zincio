@@ -56,18 +56,21 @@ pub struct Stderr {
 
 /// Get an async-aware stdin reader.
 #[inline]
+#[must_use]
 pub fn stdin() -> Stdin {
     Stdin { _private: () }
 }
 
 /// Get an async-aware stdout writer.
 #[inline]
+#[must_use]
 pub fn stdout() -> Stdout {
     Stdout { _private: () }
 }
 
 /// Get an async-aware stderr writer.
 #[inline]
+#[must_use]
 pub fn stderr() -> Stderr {
     Stderr { _private: () }
 }

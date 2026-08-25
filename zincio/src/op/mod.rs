@@ -135,7 +135,7 @@ pub trait Op {
         }
     }
 
-    /// Builds an io_uring submission entry for this operation. Returns the
+    /// Builds an `io_uring` submission entry for this operation. Returns the
     /// constructed SQE.
     #[cfg(target_os = "linux")]
     #[inline]

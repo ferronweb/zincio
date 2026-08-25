@@ -56,6 +56,9 @@ fn pipe_inner() -> std::io::Result<(OwnedFd, OwnedFd)> {
 /// Create a new async-aware pipe.
 ///
 /// Returns a tuple of `(reader, writer)` pipe endpoints.
+///
+/// # Errors
+/// Returns an error if the underlying pipe creation or registration fails.
 pub fn pipe() -> std::io::Result<(Pipe, Pipe)> {
     let (read, write) = pipe_inner()?;
     Ok((
@@ -100,6 +103,9 @@ impl Pipe {
     }
 
     /// Convert this `Pipe` to a `PollPipe` for readiness-based operations.
+    ///
+    /// # Errors
+    /// Returns an error if the underlying registration mode change fails.
     #[inline]
     pub fn into_poll(self) -> Result<PollPipe, io::Error> {
         let mut stream = self;
@@ -119,11 +125,15 @@ impl Pipe {
 impl PollPipe {
     /// Convert this `PollPipe` back to an adaptive `Pipe`.
     #[inline]
+    #[must_use]
     pub fn into_adaptive(self) -> Pipe {
         self.stream
     }
 
     /// Convert this `PollPipe` to a completion-based `Pipe`.
+    ///
+    /// # Errors
+    /// Returns an error if the underlying registration mode change fails.
     #[inline]
     pub fn into_completion(self) -> Result<Pipe, io::Error> {
         let mut stream = self.stream;
@@ -163,7 +173,7 @@ impl IntoRawFd for Pipe {
         // We then move out the inner std stream and transfer its fd ownership to the caller.
         unsafe {
             ManuallyDrop::drop(&mut this.handle);
-            std::ptr::read(&this.inner).into_raw_fd()
+            std::ptr::read(&raw const this.inner).into_raw_fd()
         }
     }
 }
@@ -226,7 +236,7 @@ impl TokioAsyncRead for PollPipe {
 
         let this = self.get_mut();
         // Equivalent to .assume_init_mut() in Rust 1.93.0+
-        let unfilled = unsafe { &mut *(buf.unfilled_mut() as *mut [MaybeUninit<u8>] as *mut [u8]) };
+        let unfilled = unsafe { &mut *(std::ptr::from_mut::<[MaybeUninit<u8>]>(buf.unfilled_mut()) as *mut [u8]) };
         let buf_temp = unsafe { IoBufTemporaryPoll::new(unfilled.as_mut_ptr(), unfilled.len()) };
         let mut op = ReadOp::new(&this.stream.handle, buf_temp);
         match this.stream.handle.poll_op_poll(cx, &mut op) {
@@ -277,7 +287,7 @@ impl TokioAsyncWrite for PollPipe {
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
         let this = self.get_mut();
-        let buf = unsafe { IoBufTemporaryPoll::new(buf.as_ptr() as *mut u8, buf.len()) };
+        let buf = unsafe { IoBufTemporaryPoll::new(buf.as_ptr().cast_mut(), buf.len()) };
         let mut op = WriteOp::new(&this.stream.handle, buf);
         this.stream.handle.poll_op_poll(cx, &mut op)
     }

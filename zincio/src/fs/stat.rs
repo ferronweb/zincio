@@ -16,7 +16,7 @@ use crate::op::Op;
 ///
 /// # Platform-specific behavior
 ///
-/// - On Linux with io_uring support and glibc/musl v1.2.3+, this uses the `statx` syscall directly
+/// - On Linux with `io_uring` support and glibc/musl v1.2.3+, this uses the `statx` syscall directly
 ///   for better async performance.
 /// - On other platforms, this either offloads to a blocking thread pool or falls back
 ///   to [`std::fs::metadata`].
@@ -26,6 +26,9 @@ use crate::op::Op;
 /// This function will return an error in the following situations:
 /// - `path` does not exist
 /// - The process lacks permissions to access the path
+///
+/// # Panics
+/// Panics if the I/O driver is in an invalid state.
 #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
 pub async fn metadata(path: impl AsRef<std::path::Path>) -> std::io::Result<Metadata> {
     let path = path.as_ref();
@@ -35,7 +38,7 @@ pub async fn metadata(path: impl AsRef<std::path::Path>) -> std::io::Result<Meta
         let path_cstr = CString::new(path.as_os_str().as_encoded_bytes()).map_err(|e| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Invalid path: {}", e),
+                format!("Invalid path: {e}"),
             )
         })?;
         let driver = driver.expect("invalid driver state");
@@ -88,7 +91,7 @@ pub async fn metadata(path: impl AsRef<std::path::Path>) -> std::io::Result<Meta
 ///
 /// # Platform-specific behavior
 ///
-/// - On Linux with io_uring support and glibc/musl v1.2.3+, this uses the `statx` syscall directly
+/// - On Linux with `io_uring` support and glibc/musl v1.2.3+, this uses the `statx` syscall directly
 ///   with `AT_SYMLINK_NOFOLLOW` flag for better async performance.
 /// - On other platforms, this either offloads to a blocking thread pool or falls back
 ///   to [`std::fs::symlink_metadata`].
@@ -98,6 +101,9 @@ pub async fn metadata(path: impl AsRef<std::path::Path>) -> std::io::Result<Meta
 /// This function will return an error in the following situations:
 /// - `path` does not exist
 /// - The process lacks permissions to access the path
+///
+/// # Panics
+/// Panics if the I/O driver is in an invalid state.
 #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
 pub async fn symlink_metadata(path: impl AsRef<std::path::Path>) -> std::io::Result<Metadata> {
     let path = path.as_ref();
@@ -107,7 +113,7 @@ pub async fn symlink_metadata(path: impl AsRef<std::path::Path>) -> std::io::Res
         let path_cstr = CString::new(path.as_os_str().as_encoded_bytes()).map_err(|e| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Invalid path: {}", e),
+                format!("Invalid path: {e}"),
             )
         })?;
         let driver = driver.expect("invalid driver state");

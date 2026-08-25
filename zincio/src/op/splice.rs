@@ -52,7 +52,7 @@ impl Op for SpliceOp<'_> {
             if returned == -1 {
                 Err(io::Error::last_os_error())
             } else {
-                Ok(returned as usize)
+                Ok(usize::try_from(returned).unwrap())
             }
         };
 
@@ -66,15 +66,12 @@ impl Op for SpliceOp<'_> {
         driver: &AnyDriver,
     ) -> Poll<io::Result<Self::Output>> {
         let result = if let Some(completion_token) = self.completion_token {
-            match driver.get_completion_result(completion_token) {
-                Some(result) => {
-                    self.completion_token = None;
-                    result
-                }
-                None => {
-                    driver.set_completion_waker(completion_token, cx.waker().clone());
-                    return Poll::Pending;
-                }
+            if let Some(result) = driver.get_completion_result(completion_token) {
+                self.completion_token = None;
+                result
+            } else {
+                driver.set_completion_waker(completion_token, cx.waker().clone());
+                return Poll::Pending;
             }
         } else {
             match driver.submit_completion(self, cx.waker().clone()) {
@@ -90,7 +87,7 @@ impl Op for SpliceOp<'_> {
         if result < 0 {
             Poll::Ready(Err(io::Error::from_raw_os_error(-result)))
         } else {
-            Poll::Ready(Ok(result as usize))
+            Poll::Ready(Ok(usize::try_from(result).unwrap()))
         }
     }
 
@@ -106,7 +103,7 @@ impl Op for SpliceOp<'_> {
             -1,
             types::Fd(self.fd_out.handle),
             -1,
-            self.len as u32,
+            u32::try_from(self.len).unwrap(),
         )
         .build()
         .user_data(user_data);

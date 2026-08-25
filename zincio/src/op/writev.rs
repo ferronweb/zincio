@@ -31,7 +31,7 @@ fn iovec_to_system(bufs: &[IoVec]) -> Box<[libc::iovec]> {
     let mut iovecs_maybeuninit: Box<[MaybeUninit<libc::iovec>]> = Box::new_uninit_slice(bufs.len());
     for (index, s) in bufs.iter().enumerate() {
         let iov = libc::iovec {
-            iov_base: s.ptr as *mut libc::c_void,
+            iov_base: s.ptr.cast::<libc::c_void>(),
             iov_len: s.len,
         };
         iovecs_maybeuninit[index].write(iov);
@@ -140,13 +140,13 @@ impl<B: IoVectoredBuf> Op for WritevOp<'_, B> {
                 libc::writev(
                     self.handle.handle,
                     iovecs_system.as_ptr(),
-                    iovecs_system.len() as libc::c_int,
+                    i32::try_from(iovecs_system.len()).unwrap(),
                 )
             };
             if written == -1 {
                 Err(io::Error::last_os_error())
             } else {
-                Ok(written as usize)
+                Ok(usize::try_from(written).unwrap())
             }
         };
 
@@ -174,16 +174,13 @@ impl<B: IoVectoredBuf> Op for WritevOp<'_, B> {
         driver: &AnyDriver,
     ) -> Poll<io::Result<Self::Output>> {
         let result = if let Some(completion_token) = self.completion_token {
-            match driver.get_completion_result(completion_token) {
-                Some(result) => {
-                    self.completion_token = None;
-                    result
-                }
-                None => {
-                    // The completion is not ready yet
-                    driver.set_completion_waker(completion_token, cx.waker().clone());
-                    return Poll::Pending;
-                }
+            if let Some(result) = driver.get_completion_result(completion_token) {
+                self.completion_token = None;
+                result
+            } else {
+                // The completion is not ready yet
+                driver.set_completion_waker(completion_token, cx.waker().clone());
+                return Poll::Pending;
             }
         } else {
             // Submit the op
@@ -211,7 +208,7 @@ impl<B: IoVectoredBuf> Op for WritevOp<'_, B> {
             self.completion_staging = None;
         }
 
-        Poll::Ready(Ok(result as usize))
+        Poll::Ready(Ok(usize::try_from(result).unwrap()))
     }
 
     #[cfg(windows)]
@@ -340,7 +337,7 @@ impl<B: IoVectoredBuf> Op for WritevOp<'_, B> {
         let entry = opcode::Writev::new(
             types::Fd(self.handle.handle),
             iovecs.as_ptr(),
-            iovecs.len() as _,
+            u32::try_from(iovecs.len()).unwrap(),
         )
         .build()
         .user_data(user_data);

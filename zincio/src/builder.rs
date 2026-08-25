@@ -15,16 +15,16 @@ pub enum DriverKind {
     Iocp,
     /// Uses the mock driver for testing purposes.
     Mock,
-    /// Uses the io_uring driver (Linux only).
+    /// Uses the `io_uring` driver (Linux only).
     #[cfg(target_os = "linux")]
     IoUring,
-    /// Uses the io_uring driver with custom entry count (Linux only).
+    /// Uses the `io_uring` driver with custom entry count (Linux only).
     #[cfg(target_os = "linux")]
     IoUringEntries(u32),
-    /// Uses a custom io_uring driver (Linux only).
+    /// Uses a custom `io_uring` driver (Linux only).
     #[cfg(target_os = "linux")]
     IoUringCustom(io_uring::Builder),
-    /// Uses a custom io_uring driver with custom entry count (Linux only).
+    /// Uses a custom `io_uring` driver with custom entry count (Linux only).
     #[cfg(target_os = "linux")]
     IoUringCustomEntries(u32, io_uring::Builder),
 }
@@ -42,12 +42,12 @@ impl DriverKind {
             #[cfg(target_os = "linux")]
             DriverKind::IoUring => AnyDriver::new_uring(),
             #[cfg(target_os = "linux")]
-            DriverKind::IoUringCustom(builder) => AnyDriver::new_uring_custom(builder),
+            DriverKind::IoUringCustom(builder) => AnyDriver::new_uring_custom(&builder),
             #[cfg(target_os = "linux")]
             DriverKind::IoUringEntries(entries) => AnyDriver::new_uring_with_entries(entries),
             #[cfg(target_os = "linux")]
             DriverKind::IoUringCustomEntries(entries, builder) => {
-                AnyDriver::new_uring_custom_with_entries(entries, builder)
+                AnyDriver::new_uring_custom_with_entries(entries, &builder)
             }
         }
     }
@@ -78,6 +78,7 @@ impl RuntimeBuilder {
     /// Creates a new runtime builder with default configuration.
     ///
     /// By default, the builder will select the best available driver for the platform.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             driver_kind: None,
@@ -89,6 +90,7 @@ impl RuntimeBuilder {
     }
 
     /// Sets the I/O driver for the runtime.
+    #[must_use]
     pub fn driver(mut self, driver_kind: DriverKind) -> Self {
         self.driver_kind = Some(driver_kind);
         self
@@ -97,6 +99,7 @@ impl RuntimeBuilder {
     /// Enables or disables the timer for the runtime.
     ///
     /// By default, the timer is disabled.
+    #[must_use]
     pub fn enable_timer(mut self, enable: bool) -> Self {
         self.enable_timer = enable;
         self
@@ -105,12 +108,14 @@ impl RuntimeBuilder {
     /// Enables or disables the offload of file I/O to blocking threads for the runtime.
     ///
     /// By default, the fs offload is disabled.
+    #[must_use]
     pub fn enable_fs_offload(mut self, enable: bool) -> Self {
         self.enable_fs_offload = enable;
         self
     }
 
     /// Sets the blocking thread pool for the runtime.
+    #[must_use]
     pub fn blocking_pool(mut self, blocking_pool: Box<dyn BlockingThreadPool>) -> Self {
         self.blocking_pool = Some(blocking_pool);
         self
@@ -125,6 +130,7 @@ impl RuntimeBuilder {
     /// raising this (e.g. 512-1024) can improve throughput under bursty
     /// accept/completion floods; lowering it tightens tail latency when a
     /// single task does significant synchronous work per poll.
+    #[must_use]
     pub fn batch_size(mut self, batch_size: usize) -> Self {
         self.batch_size = batch_size;
         self
@@ -132,7 +138,7 @@ impl RuntimeBuilder {
 
     /// Configure the underlying `io_uring` builder.
     ///
-    /// Only used when the io_uring driver is selected (Linux). Allows
+    /// Only used when the `io_uring` driver is selected (Linux). Allows
     /// tuning flags such as `setup_sqpoll`, `setup_coop_taskrun`,
     /// `setup_submit_all`, etc. with automatic fallback for older kernels.
     ///
@@ -148,6 +154,7 @@ impl RuntimeBuilder {
     /// # }
     /// ```
     #[cfg(target_os = "linux")]
+    #[must_use]
     pub fn uring<F>(mut self, f: F) -> Self
     where
         F: FnOnce(&mut io_uring::Builder),
@@ -163,6 +170,7 @@ impl RuntimeBuilder {
 
     /// Sets the default blocking thread pool for the runtime with specified maximum number of threads.
     #[cfg(feature = "blocking-default")]
+    #[must_use]
     pub fn default_blocking_pool(mut self, max_threads: usize) -> Self {
         self.blocking_pool = Some(Box::new(DefaultBlockingThreadPool::with_max_threads(
             max_threads,
@@ -173,6 +181,9 @@ impl RuntimeBuilder {
     /// Builds the async runtime with the configured settings.
     ///
     /// If no driver was explicitly set, selects the best available driver for the platform.
+    ///
+    /// # Errors
+    /// Returns an error if the underlying driver or runtime initialization fails.
     pub fn build(self) -> Result<crate::executor::Runtime, std::io::Error> {
         let driver = if let Some(driver_kind) = self.driver_kind {
             driver_kind.into_driver()?

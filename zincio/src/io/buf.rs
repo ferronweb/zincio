@@ -323,7 +323,7 @@ impl IoBufTemporaryPoll {
 impl IoBuf for IoBufTemporaryPoll {
     #[inline]
     fn as_buf_ptr(&self) -> *const u8 {
-        self.ptr as *const u8
+        self.ptr.cast_const()
     }
 
     #[inline]
@@ -387,7 +387,7 @@ impl IoVectoredBuf for Vec<libc::iovec> {
         let mut iovecs = Box::new_uninit_slice(self.len());
         for (index, iovec) in self.iter().enumerate() {
             iovecs[index].write(IoVec {
-                ptr: iovec.iov_base as *mut u8,
+                ptr: iovec.iov_base.cast::<u8>(),
                 len: iovec.iov_len,
             });
         }
@@ -416,7 +416,7 @@ impl IoVectoredBuf for Box<[libc::iovec]> {
         let mut iovecs = Box::new_uninit_slice(self.len());
         for (index, iovec) in self.iter().enumerate() {
             iovecs[index].write(IoVec {
-                ptr: iovec.iov_base as *mut u8,
+                ptr: iovec.iov_base.cast::<u8>(),
                 len: iovec.iov_len,
             });
         }
@@ -444,7 +444,7 @@ impl IoVectoredBufTemporaryPoll {
     pub(crate) unsafe fn new(iovecs: &[IoSlice<'_>]) -> Self {
         let iovecs = iovecs
             .iter()
-            .map(|iovec| (iovec.as_ptr() as *mut u8, iovec.len()))
+            .map(|iovec| (iovec.as_ptr().cast_mut(), iovec.len()))
             .collect();
         Self { iovecs }
     }

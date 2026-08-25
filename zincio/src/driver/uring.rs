@@ -38,7 +38,7 @@ impl Interruptor for UringInterruptor {
             let _ = unsafe {
                 libc::write(
                     *eventfd,
-                    &value as *const u64 as *const std::ffi::c_void,
+                    (&raw const value).cast::<std::ffi::c_void>(),
                     std::mem::size_of::<u64>(),
                 )
             };
@@ -93,7 +93,7 @@ impl Drop for UringDriver {
 
 impl UringDriver {
     #[inline]
-    pub(crate) fn new(entries: u32, builder: io_uring::Builder) -> Result<Self, io::Error> {
+    pub(crate) fn new(entries: u32, builder: &io_uring::Builder) -> Result<Self, io::Error> {
         // SAFETY: eventfd initialization code, which takes no pointers nor fds
         let eventfd = unsafe { libc::eventfd(0, libc::EFD_NONBLOCK | libc::EFD_CLOEXEC) };
         if eventfd < 0 {
@@ -132,12 +132,12 @@ impl UringDriver {
 
     #[inline]
     fn encode_completion_key(token: usize) -> u64 {
-        ((token as u64) << KEY_KIND_BITS) | COMPLETION_KEY_KIND as u64
+        ((token as u64) << KEY_KIND_BITS) | u64::from(COMPLETION_KEY_KIND)
     }
 
     #[inline]
     fn encode_poll_key(token: Token) -> u64 {
-        ((token.0 as u64) << KEY_KIND_BITS) | POLL_KEY_KIND as u64
+        ((token.0 as u64) << KEY_KIND_BITS) | u64::from(POLL_KEY_KIND)
     }
 
     #[inline]
@@ -173,7 +173,7 @@ impl UringDriver {
     }
 
     #[inline]
-    fn push_entry(&self, entry: squeue::Entry) -> Result<(), io::Error> {
+    fn push_entry(&self, entry: &squeue::Entry) -> Result<(), io::Error> {
         let mut ring = self.ring.borrow_mut();
 
         if ring.submission().is_full() {
@@ -182,7 +182,7 @@ impl UringDriver {
 
         let mut sq = ring.submission();
         unsafe {
-            sq.push(&entry)
+            sq.push(entry)
                 .map_err(|_| io::Error::other("io_uring submission queue is full"))?;
         }
 
@@ -196,7 +196,7 @@ impl UringDriver {
         let entry = opcode::PollAdd::new(types::Fd(fd), poll_mask)
             .build()
             .user_data(Self::encode_poll_key(token));
-        self.push_entry(entry)
+        self.push_entry(&entry)
     }
 
     #[inline]
@@ -225,7 +225,7 @@ impl UringDriver {
                             let timespec = timeout.into();
                             let mut ts_box = self.timespec.borrow_mut();
                             **ts_box = timespec;
-                            let timespec_ptr = &**ts_box as *const Timespec;
+                            let timespec_ptr = &raw const **ts_box;
 
                             // We must drop the borrow here so we can call push_entry (which borrows ring, but doesn't borrow timespec).
                             // BUT push_entry borrows ring. We currently have `ring` borrowed mutably!
@@ -333,8 +333,8 @@ impl UringDriver {
             if key_kind == POLL_KEY_KIND {
                 let waiter = match state.registrations.get_mut(token.0) {
                     Some(HandleRegistration::Poll(registration)) => {
-                        let write = registration.poll_mask as i16 & libc::POLLOUT != 0;
-                        let read = registration.poll_mask as i16 & libc::POLLIN != 0;
+                        let write = i16::try_from(registration.poll_mask).unwrap() & libc::POLLOUT != 0;
+                        let read = i16::try_from(registration.poll_mask).unwrap() & libc::POLLIN != 0;
                         if write {
                             registration.poll_write_armed = false;
                             if read {
@@ -389,15 +389,15 @@ impl UringDriver {
                     .as_ref(),
             ),
             buffer.as_mut_ptr(),
-            buffer.len() as u32,
+            u32::try_from(buffer.len()).unwrap(),
         )
         .build()
         .user_data(u64::MAX);
 
         // We use push_entry here. It handles submission if full.
         // We panic if it fails because we cannot recover (we won't be able to wake up).
-        if let Err(err) = self.push_entry(entry) {
-            panic!("io_uring: failed to submit interrupt task: {}", err);
+        if let Err(err) = self.push_entry(&entry) {
+            panic!("io_uring: failed to submit interrupt task: {err}");
         }
     }
 }
@@ -408,7 +408,7 @@ impl Driver for UringDriver {
     #[inline]
     fn flush(&self) {
         match self.collect_completions(false, None) {
-            Ok(_) => {}
+            Ok(()) => {}
             Err(err) if err.kind() == io::ErrorKind::Interrupted => {}
             Err(err) => panic!("io_uring submit failed while processing I/O completions: {err}"),
         }
@@ -422,7 +422,7 @@ impl Driver for UringDriver {
     #[inline]
     fn wait(&self, timeout: Option<Duration>) {
         match self.collect_completions(true, timeout) {
-            Ok(_) => {}
+            Ok(()) => {}
             Err(err) if err.kind() == io::ErrorKind::Interrupted => {}
             Err(err) => panic!("io_uring submit_and_wait failed while waiting for I/O: {err}"),
         }
@@ -588,8 +588,8 @@ impl Driver for UringDriver {
                 if let Some(HandleRegistration::Poll(registration)) =
                     state.registrations.get_mut(token.0)
                 {
-                    let write = registration.poll_mask as i16 & libc::POLLOUT != 0;
-                    let read = registration.poll_mask as i16 & libc::POLLIN != 0;
+                    let write = i16::try_from(registration.poll_mask).unwrap() & libc::POLLOUT != 0;
+                    let read = i16::try_from(registration.poll_mask).unwrap() & libc::POLLIN != 0;
                     if write {
                         registration.poll_write_armed = false;
                         registration.waiter_write = None;
@@ -623,7 +623,7 @@ impl Driver for UringDriver {
 
         // Push the SQE into the submission queue. If this fails, undo the inflight
         // flag and clear waiters on the registration.
-        if let Err(err) = self.push_entry(entry) {
+        if let Err(err) = self.push_entry(&entry) {
             return CompletionIoResult::SubmitErr(err);
         }
 

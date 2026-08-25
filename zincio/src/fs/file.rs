@@ -30,7 +30,7 @@ use crate::fs::open_options::OpenOptions;
 /// A file handle for asynchronous file I/O operations.
 ///
 /// This struct provides async versions of common file operations like reading,
-/// writing, and syncing. It supports both io_uring completion-based I/O on Linux
+/// writing, and syncing. It supports both `io_uring` completion-based I/O on Linux
 /// and blocking thread pool fallback for other platforms.
 ///
 /// # Examples
@@ -56,7 +56,7 @@ enum FileIo {
 /// A file handle for asynchronous file I/O operations.
 ///
 /// This struct provides async versions of common file operations like reading,
-/// writing, and syncing. It supports both io_uring completion-based I/O on Linux
+/// writing, and syncing. It supports both `io_uring` completion-based I/O on Linux
 /// and blocking thread pool fallback for other platforms.
 ///
 /// # Examples
@@ -87,7 +87,7 @@ impl File {
     ///
     /// # Platform-specific behavior
     ///
-    /// - On Linux with io_uring support, this uses the `openat` syscall directly.
+    /// - On Linux with `io_uring` support, this uses the `openat` syscall directly.
     /// - On other platforms, this either offloads to a blocking thread pool or falls back
     ///   to [`std::fs::File::open`].
     ///
@@ -115,7 +115,7 @@ impl File {
     ///
     /// # Platform-specific behavior
     ///
-    /// - On Linux with io_uring support, this uses the `openat` syscall directly.
+    /// - On Linux with `io_uring` support, this uses the `openat` syscall directly.
     /// - On other platforms, this either offloads to a blocking thread pool or falls back
     ///   to [`std::fs::File::create`].
     ///
@@ -146,6 +146,7 @@ impl File {
     ///
     /// This is a convenience method equivalent to `OpenOptions::new()`.
     #[inline]
+    #[must_use]
     pub fn options() -> OpenOptions {
         OpenOptions::new()
     }
@@ -153,16 +154,20 @@ impl File {
     /// Creates a new `File` from a standard library file.
     ///
     /// This is a convenience method equivalent to `File::from_std_with_cursor(inner, 0)`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying file cannot be wrapped for async I/O.
     #[inline]
     pub fn from_std(inner: std::fs::File) -> io::Result<Self> {
-        Self::from_std_with_cursor(inner, 0)
+        Ok(Self::from_std_with_cursor(inner, 0))
     }
 
     /// Creates a new `File` from a standard library file with a specified cursor position.
     ///
     /// This is an internal method used to create a `File` with a custom cursor position.
     #[inline]
-    pub(crate) fn from_std_with_cursor(inner: std::fs::File, cursor: u64) -> io::Result<Self> {
+    pub(crate) fn from_std_with_cursor(inner: std::fs::File, cursor: u64) -> Self {
         let io = if let Some(driver) = current_driver() {
             if driver.supports_completion() {
                 #[cfg(unix)]
@@ -186,22 +191,23 @@ impl File {
             FileIo::Blocking
         };
 
-        Ok(Self { inner, io, cursor })
+        Self { inner, io, cursor }
     }
 
     /// Converts the `File` back into a standard library `std::fs::File`.
     #[inline]
+    #[must_use]
     pub fn into_std(self) -> std::fs::File {
         let mut this = ManuallyDrop::new(self);
         unsafe {
             if let FileIo::Completion(handle) = &mut this.io {
                 ManuallyDrop::drop(handle);
             }
-            std::ptr::read(&this.inner)
+            std::ptr::read(&raw const this.inner)
         }
     }
 
-    /// Returns the completion handle if this file is using io_uring completion.
+    /// Returns the completion handle if this file is using `io_uring` completion.
     #[inline]
     fn completion_handle(&self) -> Option<&InnerRawHandle> {
         match &self.io {
@@ -217,7 +223,7 @@ impl File {
     ///
     /// # Platform-specific behavior
     ///
-    /// - On Linux with io_uring support, this uses the `readv` syscall directly.
+    /// - On Linux with `io_uring` support, this uses the `readv` syscall directly.
     /// - On other platforms, this either offloads to a blocking thread pool or falls back
     ///   to synchronous reading.
     ///
@@ -262,7 +268,7 @@ impl File {
     ///
     /// # Platform-specific behavior
     ///
-    /// - On Linux with io_uring support, this uses the `readv` syscall directly.
+    /// - On Linux with `io_uring` support, this uses the `readv` syscall directly.
     /// - On other platforms, this either offloads to a blocking thread pool or falls back
     ///   to synchronous reading.
     ///
@@ -306,7 +312,7 @@ impl File {
 
             offset = offset.saturating_add(read as u64);
             buf_returned.advance(read);
-            buf = buf_returned
+            buf = buf_returned;
         }
 
         (Ok(()), buf.into_inner())
@@ -319,7 +325,7 @@ impl File {
     ///
     /// # Platform-specific behavior
     ///
-    /// - On Linux with io_uring support, this uses the `writev` syscall directly.
+    /// - On Linux with `io_uring` support, this uses the `writev` syscall directly.
     /// - On other platforms, this either offloads to a blocking thread pool or falls back
     ///   to synchronous writing.
     ///
@@ -364,7 +370,7 @@ impl File {
     ///
     /// # Platform-specific behavior
     ///
-    /// - On Linux with io_uring support, this uses the `writev` syscall directly.
+    /// - On Linux with `io_uring` support, this uses the `writev` syscall directly.
     /// - On other platforms, this either offloads to a blocking thread pool or falls back
     ///   to synchronous writing.
     ///
@@ -420,7 +426,7 @@ impl File {
     ///
     /// # Platform-specific behavior
     ///
-    /// - On Linux with io_uring support, this uses the `fsync` syscall directly.
+    /// - On Linux with `io_uring` support, this uses the `fsync` syscall directly.
     /// - On other platforms, this either offloads to a blocking thread pool or falls back
     ///   to [`std::fs::File::sync_all`].
     ///
@@ -463,7 +469,7 @@ impl File {
     ///
     /// # Platform-specific behavior
     ///
-    /// - On Linux with io_uring support, this uses the `fsync` syscall directly.
+    /// - On Linux with `io_uring` support, this uses the `fsync` syscall directly.
     /// - On other platforms, this either offloads to a blocking thread pool or falls back
     ///   to [`std::fs::File::sync_data`].
     ///
@@ -506,7 +512,7 @@ impl File {
     ///
     /// # Platform-specific behavior
     ///
-    /// - On Linux with io_uring support and glibc/musl v1.2.3+, this uses the `statx` syscall directly.
+    /// - On Linux with `io_uring` support and glibc/musl v1.2.3+, this uses the `statx` syscall directly.
     /// - On other platforms, this either offloads to a blocking thread pool or falls back
     ///   to [`std::fs::File::metadata`].
     ///
@@ -524,6 +530,11 @@ impl File {
     /// let metadata = file.metadata().await?;
     /// println!("File size: {} bytes", metadata.len());
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics on platforms where the `statx` syscall is used and the empty path
+    /// cannot be converted into a C string (which is never expected to happen).
     #[inline]
     pub async fn metadata(&self) -> io::Result<Metadata> {
         if let Some(handle) = self.completion_handle() {

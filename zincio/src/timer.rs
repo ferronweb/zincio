@@ -49,9 +49,9 @@ struct TimingWheel {
     current_tick: u64,
     /// Generation counter for handling timer reuse
     generation_counter: u64,
-    /// The minimum expiration tick among all entries (for O(1) nearest_wakeup)
+    /// The minimum expiration tick among all entries (for O(1) `nearest_wakeup`)
     min_expiration_tick: Option<u64>,
-    /// Binary heap of (expiration_tick, slab_index, generation) for O(log n)
+    /// Binary heap of (`expiration_tick`, `slab_index`, generation) for O(log n)
     /// min-expiration tracking instead of O(n) scan on remove/expire.
     expiration_heap: BinaryHeap<Reverse<(u64, usize, u64)>>,
 }
@@ -118,7 +118,7 @@ impl TimingWheel {
     #[inline]
     pub fn insert(&mut self, waker: Waker, expiration_tick: u64) -> TimerHandle {
         let delay = expiration_tick.saturating_sub(self.current_tick);
-        let (level, slot) = self.calculate_level_and_slot(delay);
+        let (level, slot) = Self::calculate_level_and_slot(delay);
 
         self.generation_counter += 1;
         let generation = self.generation_counter;
@@ -182,8 +182,8 @@ impl TimingWheel {
 
         // Process all level 0 slots that fall within the range
         // Level 0 has 64 slots, each representing 1ms
-        let start_slot = (start_tick as usize) & (SLOTS_PER_LEVEL - 1);
-        let end_slot = (self.current_tick as usize) & (SLOTS_PER_LEVEL - 1);
+        let start_slot = usize::try_from(start_tick).unwrap() & (SLOTS_PER_LEVEL - 1);
+        let end_slot = usize::try_from(self.current_tick).unwrap() & (SLOTS_PER_LEVEL - 1);
 
         if ticks >= SLOTS_PER_LEVEL as u64 {
             // We've wrapped around at least once, process all slots
@@ -235,7 +235,7 @@ impl TimingWheel {
                     } else {
                         // Re-calculate the appropriate level and slot based on remaining delay
                         let delay = entry.expiration_tick - self.current_tick;
-                        let (new_level, new_slot) = self.calculate_level_and_slot(delay);
+                        let (new_level, new_slot) = Self::calculate_level_and_slot(delay);
 
                         if let Some(entry) = self.entries.get_mut(slab_index) {
                             entry.level = new_level;
@@ -261,7 +261,7 @@ impl TimingWheel {
                 } else {
                     // Timer hasn't expired yet, re-insert at appropriate level
                     let delay = entry.expiration_tick - self.current_tick;
-                    let (new_level, new_slot) = self.calculate_level_and_slot(delay);
+                    let (new_level, new_slot) = Self::calculate_level_and_slot(delay);
 
                     if let Some(entry) = self.entries.get_mut(slab_index) {
                         entry.level = new_level;
@@ -275,27 +275,30 @@ impl TimingWheel {
 
     /// Calculate the appropriate level and slot for a given delay
     #[inline]
-    fn calculate_level_and_slot(&self, delay: u64) -> (usize, usize) {
+    fn calculate_level_and_slot(delay: u64) -> (usize, usize) {
         for level in 0..NUM_LEVELS {
             let level_shift = 6 * level;
 
             if level == NUM_LEVELS - 1 {
                 // Top level: use the highest bits
-                let slot = ((delay >> level_shift) & (SLOTS_PER_LEVEL as u64 - 1)) as usize;
+                let slot =
+                    usize::try_from((delay >> level_shift) & (SLOTS_PER_LEVEL as u64 - 1)).unwrap();
                 return (level, slot);
             }
 
             // Check if delay fits in this level
             let max_for_level = ((SLOTS_PER_LEVEL as u64) << level_shift) - 1;
             if delay <= max_for_level || level == NUM_LEVELS - 1 {
-                let slot = ((delay >> level_shift) & (SLOTS_PER_LEVEL as u64 - 1)) as usize;
+                let slot =
+                    usize::try_from((delay >> level_shift) & (SLOTS_PER_LEVEL as u64 - 1)).unwrap();
                 return (level, slot);
             }
         }
 
         // Fallback to top level
         let level_shift = 6 * (NUM_LEVELS - 1);
-        let slot = ((delay >> level_shift) & (SLOTS_PER_LEVEL as u64 - 1)) as usize;
+        let slot =
+            usize::try_from((delay >> level_shift) & (SLOTS_PER_LEVEL as u64 - 1)).unwrap();
         (NUM_LEVELS - 1, slot)
     }
 }
@@ -324,9 +327,12 @@ impl Timer {
 
     #[inline]
     pub fn submit(&self, deadline: Instant, waker: Waker) -> Option<TimerHandle> {
-        let millis = deadline
-            .saturating_duration_since(*self.instant.borrow())
-            .as_millis() as u64;
+        let millis = u64::try_from(
+            deadline
+                .saturating_duration_since(*self.instant.borrow())
+                .as_millis(),
+        )
+        .unwrap();
         if millis < 1 {
             // If the duration is less than 1 millisecond, wake the task immediately
             // One tick is equivalent to 1 millisecond.
@@ -365,7 +371,7 @@ impl Timer {
         *instant = now;
         let mut woken_up = false;
         // Advance the timer wheel
-        for waker in wheel.advance(elapsed.as_millis() as u64) {
+        for waker in wheel.advance(u64::try_from(elapsed.as_millis()).unwrap()) {
             // Wake the pending tasks
             waker.wake();
             woken_up = true;

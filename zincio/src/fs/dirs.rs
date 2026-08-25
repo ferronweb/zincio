@@ -17,7 +17,7 @@ use crate::op::{MkDirOp, Op, RenameOp, UnlinkOp};
 ///
 /// # Platform-specific behavior
 ///
-/// - On Linux with io_uring support, this uses the `renameat` syscall directly.
+/// - On Linux with `io_uring` support, this uses the `renameat` syscall directly.
 /// - On other platforms, this either offloads to a blocking thread pool or falls back
 ///   to [`std::fs::rename`].
 ///
@@ -28,6 +28,9 @@ use crate::op::{MkDirOp, Op, RenameOp, UnlinkOp};
 /// - `to` already exists and is not overwritable
 /// - The source and destination are on different filesystems
 /// - The process lacks permissions
+///
+/// # Panics
+/// Panics if the I/O driver is in an invalid state.
 #[cfg(target_os = "linux")]
 pub async fn rename(
     from: impl AsRef<std::path::Path>,
@@ -41,13 +44,13 @@ pub async fn rename(
         let from_cstr = CString::new(from.as_os_str().as_encoded_bytes()).map_err(|e| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Invalid path: {}", e),
+                format!("Invalid path: {e}"),
             )
         })?;
         let to_cstr = CString::new(to.as_os_str().as_encoded_bytes()).map_err(|e| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Invalid path: {}", e),
+                format!("Invalid path: {e}"),
             )
         })?;
         let driver = driver.expect("invalid driver state");
@@ -102,7 +105,7 @@ pub async fn rename(
 ///
 /// # Platform-specific behavior
 ///
-/// - On Linux with io_uring support, this uses the `unlinkat` syscall directly.
+/// - On Linux with `io_uring` support, this uses the `unlinkat` syscall directly.
 /// - On other platforms, this either offloads to a blocking thread pool or falls back
 ///   to [`std::fs::remove_dir`].
 ///
@@ -113,6 +116,9 @@ pub async fn rename(
 /// - `path` is not a directory
 /// - The directory is not empty
 /// - The process lacks permissions
+///
+/// # Panics
+/// Panics if the I/O driver is in an invalid state.
 #[cfg(target_os = "linux")]
 pub async fn remove_dir(path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
     let path = path.as_ref();
@@ -122,7 +128,7 @@ pub async fn remove_dir(path: impl AsRef<std::path::Path>) -> std::io::Result<()
         let path_cstr = CString::new(path.as_os_str().as_encoded_bytes()).map_err(|e| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Invalid path: {}", e),
+                format!("Invalid path: {e}"),
             )
         })?;
         let driver = driver.expect("invalid driver state");
@@ -172,7 +178,7 @@ pub async fn remove_dir(path: impl AsRef<std::path::Path>) -> std::io::Result<()
 ///
 /// # Platform-specific behavior
 ///
-/// - On Linux with io_uring support, this uses the `unlinkat` syscall directly.
+/// - On Linux with `io_uring` support, this uses the `unlinkat` syscall directly.
 /// - On other platforms, this either offloads to a blocking thread pool or falls back
 ///   to [`std::fs::remove_file`].
 ///
@@ -181,6 +187,9 @@ pub async fn remove_dir(path: impl AsRef<std::path::Path>) -> std::io::Result<()
 /// This function will return an error in the following situations:
 /// - `path` does not exist
 /// - The process lacks permissions
+///
+/// # Panics
+/// Panics if the I/O driver is in an invalid state.
 #[cfg(target_os = "linux")]
 pub async fn remove_file(path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
     let path = path.as_ref();
@@ -190,7 +199,7 @@ pub async fn remove_file(path: impl AsRef<std::path::Path>) -> std::io::Result<(
         let path_cstr = CString::new(path.as_os_str().as_encoded_bytes()).map_err(|e| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Invalid path: {}", e),
+                format!("Invalid path: {e}"),
             )
         })?;
         let driver = driver.expect("invalid driver state");
@@ -238,7 +247,7 @@ pub async fn remove_file(path: impl AsRef<std::path::Path>) -> std::io::Result<(
 ///
 /// # Platform-specific behavior
 ///
-/// - On Linux with io_uring support, this uses the `mkdirat` syscall directly.
+/// - On Linux with `io_uring` support, this uses the `mkdirat` syscall directly.
 /// - On other platforms, this either offloads to a blocking thread pool or falls back
 ///   to [`std::fs::create_dir`].
 ///
@@ -249,6 +258,9 @@ pub async fn remove_file(path: impl AsRef<std::path::Path>) -> std::io::Result<(
 /// - A component in the path is not a directory
 /// - The process lacks permissions
 /// - The directory already exists
+///
+/// # Panics
+/// Panics if the I/O driver is in an invalid state.
 #[cfg(target_os = "linux")]
 pub async fn create_dir(path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
     let path = path.as_ref();
@@ -258,7 +270,7 @@ pub async fn create_dir(path: impl AsRef<std::path::Path>) -> std::io::Result<()
         let path_cstr = CString::new(path.as_os_str().as_encoded_bytes()).map_err(|e| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Invalid path: {}", e),
+                format!("Invalid path: {e}"),
             )
         })?;
         let driver = driver.expect("invalid driver state");
@@ -351,7 +363,7 @@ pub async fn create_dir_all(path: impl AsRef<std::path::Path>) -> std::io::Resul
     // Now create directories in stack in reverse order (top to bottom)
     while let Some(p) = stack.pop() {
         match create_dir(p).await {
-            Ok(()) => continue,
+            Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                 if let Ok(metadata) = metadata(p).await {
                     if metadata.is_dir() {

@@ -8,12 +8,14 @@ pub struct DefaultBlockingThreadPool {
 impl DefaultBlockingThreadPool {
     /// Creates a new `DefaultBlockingThreadPool` with the default maximum number of threads.
     #[inline]
+    #[must_use]
     pub fn new() -> Self {
         Self::with_max_threads(512)
     }
 
     /// Creates a new `DefaultBlockingThreadPool` with the specified maximum number of threads.
     #[inline]
+    #[must_use]
     pub fn with_max_threads(num_threads: usize) -> Self {
         Self {
             inner: rusty_pool::Builder::new().max_size(num_threads).build(),

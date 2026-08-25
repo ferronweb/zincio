@@ -455,7 +455,7 @@ impl PollUdpSocket {
     ) -> Poll<Result<usize, io::Error>> {
         let this = self.get_mut();
         let handle = &this.socket.handle;
-        let buf_temp = unsafe { IoBufTemporaryPoll::new(buf.as_ptr() as *mut u8, buf.len()) };
+        let buf_temp = unsafe { IoBufTemporaryPoll::new(buf.as_ptr().cast_mut(), buf.len()) };
         let mut op = SendOp::new(handle, buf_temp);
         handle.poll_op_poll(cx, &mut op)
     }
@@ -472,7 +472,7 @@ impl PollUdpSocket {
     ) -> Poll<Result<usize, io::Error>> {
         let this = self.get_mut();
         let handle = &this.socket.handle;
-        let buf_temp = unsafe { IoBufTemporaryPoll::new(buf.as_ptr() as *mut u8, buf.len()) };
+        let buf_temp = unsafe { IoBufTemporaryPoll::new(buf.as_ptr().cast_mut(), buf.len()) };
         let mut op = SendtoOp::new(handle, buf_temp, target);
         handle.poll_op_poll(cx, &mut op)
     }
@@ -511,6 +511,10 @@ impl PollUdpSocket {
     }
 
     /// Tries to perform an I/O operation on the socket, returning an error if it is not ready.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub fn try_io_readable<Io, IoR>(&self, io: Io) -> io::Result<IoR>
     where
@@ -528,6 +532,10 @@ impl PollUdpSocket {
     }
 
     /// Tries to perform an I/O operation on the socket, returning an error if it is not ready.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub fn try_io_writable<Io, IoR>(&self, io: Io) -> io::Result<IoR>
     where

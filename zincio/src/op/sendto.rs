@@ -29,7 +29,7 @@ fn socket_addr_to_raw(address: SocketAddr) -> (libc::sockaddr_storage, libc::soc
     match address {
         SocketAddr::V4(address) => {
             let sockaddr = libc::sockaddr_in {
-                sin_family: libc::AF_INET as libc::sa_family_t,
+                sin_family: u16::try_from(libc::AF_INET).unwrap(),
                 sin_port: address.port().to_be(),
                 sin_addr: libc::in_addr {
                     s_addr: u32::from_ne_bytes(address.ip().octets()),
@@ -57,13 +57,13 @@ fn socket_addr_to_raw(address: SocketAddr) -> (libc::sockaddr_storage, libc::soc
                     .write(sockaddr);
                 (
                     storage.assume_init(),
-                    std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+                    u32::try_from(std::mem::size_of::<libc::sockaddr_in>()).unwrap(),
                 )
             }
         }
         SocketAddr::V6(address) => {
             let sockaddr = libc::sockaddr_in6 {
-                sin6_family: libc::AF_INET6 as libc::sa_family_t,
+                sin6_family: u16::try_from(libc::AF_INET6).unwrap(),
                 sin6_port: address.port().to_be(),
                 sin6_flowinfo: address.flowinfo(),
                 sin6_addr: libc::in6_addr {
@@ -92,7 +92,7 @@ fn socket_addr_to_raw(address: SocketAddr) -> (libc::sockaddr_storage, libc::soc
                     .write(sockaddr);
                 (
                     storage.assume_init(),
-                    std::mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t,
+                    u32::try_from(std::mem::size_of::<libc::sockaddr_in6>()).unwrap(),
                 )
             }
         }
@@ -256,14 +256,14 @@ impl<B: IoBuf> Op for SendtoOp<'_, B> {
                     buf.as_buf_ptr().cast::<libc::c_void>(),
                     buf.buf_len(),
                     0,
-                    (&raw_addr as *const libc::sockaddr_storage).cast::<libc::sockaddr>(),
+                    (&raw const raw_addr).cast::<libc::sockaddr>(),
                     raw_addr_len,
                 )
             };
             if written == -1 {
                 Err(io::Error::last_os_error())
             } else {
-                Ok(written as usize)
+                Ok(usize::try_from(written).unwrap())
             }
         };
 
@@ -291,15 +291,12 @@ impl<B: IoBuf> Op for SendtoOp<'_, B> {
         driver: &AnyDriver,
     ) -> Poll<io::Result<Self::Output>> {
         let result = if let Some(completion_token) = self.completion_token {
-            match driver.get_completion_result(completion_token) {
-                Some(result) => {
-                    self.completion_token = None;
-                    result
-                }
-                None => {
-                    driver.set_completion_waker(completion_token, cx.waker().clone());
-                    return Poll::Pending;
-                }
+            if let Some(result) = driver.get_completion_result(completion_token) {
+                self.completion_token = None;
+                result
+            } else {
+                driver.set_completion_waker(completion_token, cx.waker().clone());
+                return Poll::Pending;
             }
         } else {
             match driver.submit_completion(self, cx.waker().clone()) {
@@ -314,7 +311,7 @@ impl<B: IoBuf> Op for SendtoOp<'_, B> {
         if result < 0 {
             return Poll::Ready(Err(io::Error::from_raw_os_error(-result)));
         }
-        let written = result as usize;
+        let written = usize::try_from(result).unwrap();
         Poll::Ready(Ok(written))
     }
 
@@ -417,9 +414,9 @@ impl<B: IoBuf> Op for SendtoOp<'_, B> {
 
         completion.msghdr = unsafe { std::mem::zeroed::<libc::msghdr>() };
         completion.msghdr.msg_name =
-            &mut completion.addr as *mut libc::sockaddr_storage as *mut libc::c_void;
+            (&raw mut completion.addr).cast::<libc::c_void>();
         completion.msghdr.msg_namelen = completion.addr_len;
-        completion.msghdr.msg_iov = &mut completion.iovec as *mut libc::iovec;
+        completion.msghdr.msg_iov = &raw mut completion.iovec;
         completion.msghdr.msg_iovlen = 1;
         completion.msghdr.msg_control = std::ptr::null_mut();
         completion.msghdr.msg_controllen = 1;
@@ -427,7 +424,7 @@ impl<B: IoBuf> Op for SendtoOp<'_, B> {
 
         let entry = opcode::SendMsg::new(
             types::Fd(self.handle.handle),
-            &completion.msghdr as *const libc::msghdr,
+            &raw const completion.msghdr,
         )
         .build()
         .user_data(user_data);

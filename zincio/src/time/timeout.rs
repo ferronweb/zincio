@@ -95,6 +95,9 @@ where
 ///     Err(_) => { /* timed out */ }
 /// }
 /// ```
+///
+/// # Errors
+/// Returns an error if `future` does not complete within `duration`.
 #[inline]
 pub async fn timeout<T>(
     duration: Duration,

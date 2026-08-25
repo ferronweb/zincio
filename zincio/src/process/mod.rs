@@ -148,16 +148,13 @@ where
     })
     .await;
 
-    match result {
-        Ok(result) => result,
-        Err(_) => {
-            let (inner, buf) = shared
-                .try_lock()
-                .ok()
-                .and_then(|rc| rc.take())
-                .expect("inner/buf is none");
-            (Err(blocking_pool_io_error()), inner, buf)
-        }
+    if let Ok(result) = result { result } else {
+        let (inner, buf) = shared
+            .try_lock()
+            .ok()
+            .and_then(|rc| rc.take())
+            .expect("inner/buf is none");
+        (Err(blocking_pool_io_error()), inner, buf)
     }
 }
 
@@ -181,16 +178,13 @@ where
     })
     .await;
 
-    match result {
-        Ok(result) => result,
-        Err(_) => {
-            let (inner, buf) = shared
-                .try_lock()
-                .ok()
-                .and_then(|rc| rc.take())
-                .expect("inner/buf is none");
-            (Err(blocking_pool_io_error()), inner, buf)
-        }
+    if let Ok(result) = result { result } else {
+        let (inner, buf) = shared
+            .try_lock()
+            .ok()
+            .and_then(|rc| rc.take())
+            .expect("inner/buf is none");
+        (Err(blocking_pool_io_error()), inner, buf)
     }
 }
 
@@ -250,20 +244,25 @@ pub struct ChildStderr {
 impl ChildStdin {
     /// Create a new `ChildStdin` from a standard library `ChildStdin`.
     #[inline]
-    pub(crate) fn from_std(inner: std::process::ChildStdin) -> io::Result<Self> {
+    pub(crate) fn from_std(inner: std::process::ChildStdin) -> Self {
         #[cfg(unix)]
         let io = make_child_io(inner.as_raw_fd(), Interest::WRITABLE);
         #[cfg(windows)]
         let io = ChildIo::Blocking;
 
-        Ok(Self {
+        Self {
             inner: Some(inner),
             io,
-        })
+        }
     }
 
     /// Consume this `ChildStdin` and return the underlying `std::process::ChildStdin`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the child stdin has already been consumed.
     #[inline]
+    #[must_use]
     pub fn into_std(self) -> std::process::ChildStdin {
         #[cfg(not(unix))]
         let this = ManuallyDrop::new(self);
@@ -275,7 +274,7 @@ impl ChildStdin {
                 ManuallyDrop::drop(handle);
             }
         }
-        let inner = unsafe { std::ptr::read(&this.inner) };
+        let inner = unsafe { std::ptr::read(&raw const this.inner) };
         inner.expect("child stdin is already taken")
     }
 
@@ -293,20 +292,25 @@ impl ChildStdin {
 impl ChildStdout {
     /// Create a new `ChildStdout` from a standard library `ChildStdout`.
     #[inline]
-    pub(crate) fn from_std(inner: std::process::ChildStdout) -> io::Result<Self> {
+    pub(crate) fn from_std(inner: std::process::ChildStdout) -> Self {
         #[cfg(unix)]
         let io = make_child_io(inner.as_raw_fd(), Interest::READABLE);
         #[cfg(windows)]
         let io = ChildIo::Blocking;
 
-        Ok(Self {
+        Self {
             inner: Some(inner),
             io,
-        })
+        }
     }
 
     /// Consume this `ChildStdout` and return the underlying `std::process::ChildStdout`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the child stdout has already been consumed.
     #[inline]
+    #[must_use]
     pub fn into_std(self) -> std::process::ChildStdout {
         #[cfg(not(unix))]
         let this = ManuallyDrop::new(self);
@@ -318,7 +322,7 @@ impl ChildStdout {
                 ManuallyDrop::drop(handle);
             }
         }
-        let inner = unsafe { std::ptr::read(&this.inner) };
+        let inner = unsafe { std::ptr::read(&raw const this.inner) };
         inner.expect("child stdout is already taken")
     }
 
@@ -336,20 +340,25 @@ impl ChildStdout {
 impl ChildStderr {
     /// Create a new `ChildStderr` from a standard library `ChildStderr`.
     #[inline]
-    pub(crate) fn from_std(inner: std::process::ChildStderr) -> io::Result<Self> {
+    pub(crate) fn from_std(inner: std::process::ChildStderr) -> Self {
         #[cfg(unix)]
         let io = make_child_io(inner.as_raw_fd(), Interest::READABLE);
         #[cfg(windows)]
         let io = ChildIo::Blocking;
 
-        Ok(Self {
+        Self {
             inner: Some(inner),
             io,
-        })
+        }
     }
 
     /// Consume this `ChildStderr` and return the underlying `std::process::ChildStderr`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the child stderr has already been consumed.
     #[inline]
+    #[must_use]
     pub fn into_std(self) -> std::process::ChildStderr {
         #[cfg(not(unix))]
         let this = ManuallyDrop::new(self);
@@ -361,7 +370,7 @@ impl ChildStderr {
                 ManuallyDrop::drop(handle);
             }
         }
-        let inner = unsafe { std::ptr::read(&this.inner) };
+        let inner = unsafe { std::ptr::read(&raw const this.inner) };
         inner.expect("child stderr is already taken")
     }
 
@@ -412,17 +421,15 @@ impl AsyncWrite for ChildStdin {
         }
 
         if current_driver().is_some() {
-            let inner = match self.inner.take() {
-                Some(inner) => inner,
-                None => return (Err(stdio_closed_error()), buf),
+            let Some(inner) = self.inner.take() else {
+                return (Err(stdio_closed_error()), buf);
             };
             let (result, inner, buf) = write_in_blocking_pool(inner, buf).await;
             self.inner = Some(inner);
             (result, buf)
         } else {
-            let inner = match self.inner.as_mut() {
-                Some(inner) => inner,
-                None => return (Err(stdio_closed_error()), buf),
+            let Some(inner) = self.inner.as_mut() else {
+                return (Err(stdio_closed_error()), buf);
             };
             let temp_slice = iobuf_to_slice(&buf);
             (inner.write(temp_slice), buf)
@@ -437,9 +444,8 @@ impl AsyncWrite for ChildStdin {
         }
 
         if current_driver().is_some() {
-            let inner = match self.inner.take() {
-                Some(inner) => inner,
-                None => return Err(stdio_closed_error()),
+            let Some(inner) = self.inner.take() else {
+                return Err(stdio_closed_error());
             };
             let shared = Arc::new(Mutex::new(RefCell::new(Some(inner))));
             let shared_clone = shared.clone();
@@ -454,20 +460,17 @@ impl AsyncWrite for ChildStdin {
             })
             .await;
 
-            match result {
-                Ok((flush_result, inner)) => {
-                    self.inner = Some(inner);
-                    flush_result
-                }
-                Err(_) => {
-                    let inner = shared
-                        .try_lock()
-                        .ok()
-                        .and_then(|rc| rc.take())
-                        .expect("inner is none");
-                    self.inner = Some(inner);
-                    Err(blocking_pool_io_error())
-                }
+            if let Ok((flush_result, inner)) = result {
+                self.inner = Some(inner);
+                flush_result
+            } else {
+                let inner = shared
+                    .try_lock()
+                    .ok()
+                    .and_then(|rc| rc.take())
+                    .expect("inner is none");
+                self.inner = Some(inner);
+                Err(blocking_pool_io_error())
             }
         } else {
             let inner = self.inner.as_mut().ok_or_else(stdio_closed_error)?;
@@ -491,17 +494,15 @@ impl AsyncRead for ChildStdout {
         }
 
         if current_driver().is_some() {
-            let inner = match self.inner.take() {
-                Some(inner) => inner,
-                None => return (Err(stdio_closed_error()), buf),
+            let Some(inner) = self.inner.take() else {
+                return (Err(stdio_closed_error()), buf);
             };
             let (result, inner, buf) = read_in_blocking_pool(inner, buf).await;
             self.inner = Some(inner);
             (result, buf)
         } else {
-            let inner = match self.inner.as_mut() {
-                Some(inner) => inner,
-                None => return (Err(stdio_closed_error()), buf),
+            let Some(inner) = self.inner.as_mut() else {
+                return (Err(stdio_closed_error()), buf);
             };
             let mut buf = buf;
             let temp_slice = iobufmut_to_slice(&mut buf);
@@ -525,17 +526,15 @@ impl AsyncRead for ChildStderr {
         }
 
         if current_driver().is_some() {
-            let inner = match self.inner.take() {
-                Some(inner) => inner,
-                None => return (Err(stdio_closed_error()), buf),
+            let Some(inner) = self.inner.take() else {
+                return (Err(stdio_closed_error()), buf);
             };
             let (result, inner, buf) = read_in_blocking_pool(inner, buf).await;
             self.inner = Some(inner);
             (result, buf)
         } else {
-            let inner = match self.inner.as_mut() {
-                Some(inner) => inner,
-                None => return (Err(stdio_closed_error()), buf),
+            let Some(inner) = self.inner.as_mut() else {
+                return (Err(stdio_closed_error()), buf);
             };
             let mut buf = buf;
             let temp_slice = iobufmut_to_slice(&mut buf);
@@ -684,24 +683,25 @@ pub struct Child {
 impl Child {
     /// Create a new `Child` from a standard library `Child`.
     #[inline]
-    pub(crate) fn from_std(mut child: std::process::Child) -> io::Result<Self> {
-        let stdin = child.stdin.take().map(ChildStdin::from_std).transpose()?;
-        let stdout = child.stdout.take().map(ChildStdout::from_std).transpose()?;
-        let stderr = child.stderr.take().map(ChildStderr::from_std).transpose()?;
+    pub(crate) fn from_std(mut child: std::process::Child) -> Self {
+        let stdin = child.stdin.take().map(ChildStdin::from_std);
+        let stdout = child.stdout.take().map(ChildStdout::from_std);
+        let stderr = child.stderr.take().map(ChildStderr::from_std);
         let id = child.id();
 
-        Ok(Self {
+        Self {
             inner: Some(child),
             id,
             stdin,
             stdout,
             stderr,
             reaper: ZombieReaper::new(),
-        })
+        }
     }
 
     /// Returns the OS-assigned process identifier.
     #[inline]
+    #[must_use]
     pub fn id(&self) -> u32 {
         self.id
     }
@@ -717,6 +717,10 @@ impl Child {
     }
 
     /// Force kill the process.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying child process cannot be killed.
     #[inline]
     pub fn kill(&mut self) -> io::Result<()> {
         self.inner_mut()?.kill()
@@ -726,6 +730,10 @@ impl Child {
     ///
     /// This method returns a future that resolves to the process's exit status.
     /// The future completes when the process has fully exited and been reaped.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if waiting for the process to exit fails.
     #[inline]
     pub async fn wait(&mut self) -> io::Result<ExitStatus> {
         let _ = self.stdin.take(); // Similarly to std::process::Child::wait
@@ -737,6 +745,10 @@ impl Child {
     ///
     /// Returns `Ok(Some(status))` if the process has exited, `Ok(None)` if it
     /// is still running, or an error if checking the status fails.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if checking the process status fails.
     #[inline]
     pub fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
         self.inner_mut()?.try_wait()
@@ -871,6 +883,11 @@ impl Command {
     }
 
     /// Spawn the process and return a `Child` handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying `std::process::Command` cannot be
+    /// spawned or has already been consumed.
     #[inline]
     pub fn spawn(&mut self) -> io::Result<Child> {
         let child = self
@@ -878,12 +895,21 @@ impl Command {
             .as_mut()
             .ok_or_else(command_consumed_error)?
             .spawn()?;
-        Child::from_std(child)
+        Ok(Child::from_std(child))
     }
 
     /// Run the process to completion and return its exit status.
     ///
     /// This is an async version of `std::process::Command::status`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the process cannot be spawned or its status cannot
+    /// be retrieved.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the blocking pool is unavailable when offloading the operation.
     #[inline]
     pub async fn status(&mut self) -> io::Result<ExitStatus> {
         if current_driver().is_some() {
@@ -901,20 +927,17 @@ impl Command {
             })
             .await;
 
-            match result {
-                Ok((status, cmd)) => {
-                    self.inner = Some(cmd);
-                    status
-                }
-                Err(_) => {
-                    let cmd = shared
-                        .try_lock()
-                        .ok()
-                        .and_then(|rc| rc.take())
-                        .expect("command is none");
-                    self.inner = Some(cmd);
-                    Err(blocking_pool_io_error())
-                }
+            if let Ok((status, cmd)) = result {
+                self.inner = Some(cmd);
+                status
+            } else {
+                let cmd = shared
+                    .try_lock()
+                    .ok()
+                    .and_then(|rc| rc.take())
+                    .expect("command is none");
+                self.inner = Some(cmd);
+                Err(blocking_pool_io_error())
             }
         } else {
             self.inner_mut().status()
@@ -924,6 +947,15 @@ impl Command {
     /// Run the process to completion and return its output.
     ///
     /// This is an async version of `std::process::Command::output`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the process cannot be spawned or its output cannot
+    /// be retrieved.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the blocking pool is unavailable when offloading the operation.
     #[inline]
     pub async fn output(&mut self) -> io::Result<Output> {
         if current_driver().is_some() {
@@ -941,20 +973,17 @@ impl Command {
             })
             .await;
 
-            match result {
-                Ok((output, cmd)) => {
-                    self.inner = Some(cmd);
-                    output
-                }
-                Err(_) => {
-                    let cmd = shared
-                        .try_lock()
-                        .ok()
-                        .and_then(|rc| rc.take())
-                        .expect("command is none");
-                    self.inner = Some(cmd);
-                    Err(blocking_pool_io_error())
-                }
+            if let Ok((output, cmd)) = result {
+                self.inner = Some(cmd);
+                output
+            } else {
+                let cmd = shared
+                    .try_lock()
+                    .ok()
+                    .and_then(|rc| rc.take())
+                    .expect("command is none");
+                self.inner = Some(cmd);
+                Err(blocking_pool_io_error())
             }
         } else {
             self.inner_mut().output()
@@ -968,7 +997,12 @@ impl Command {
     }
 
     /// Consume this `Command` and return the underlying `std::process::Command`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the command has already been consumed.
     #[inline]
+    #[must_use]
     pub fn into_std(mut self) -> std::process::Command {
         self.inner.take().expect("command has been consumed")
     }

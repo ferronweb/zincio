@@ -28,6 +28,9 @@ use crate::io::{IoBuf, IoBufMut, IoBufWithCursor};
 ///
 /// This function reads from `reader` and writes to `writer` until EOF is reached.
 /// Returns the number of bytes copied.
+///
+/// # Errors
+/// Returns an error if reading from the reader or writing to the writer fails.
 pub async fn copy<R, W>(reader: &mut R, writer: &mut W) -> Result<u64, io::Error>
 where
     R: AsyncRead + ?Sized,
@@ -110,6 +113,7 @@ where
     T: AsyncRead + AsyncWrite + 'static,
 {
     /// Consume the half and return the shared inner `Arc<AsyncMutex<T>>`.
+    #[must_use]
     pub fn into_inner(self) -> Arc<AsyncMutex<T>> {
         self.inner
     }
@@ -120,6 +124,7 @@ where
     T: AsyncRead + AsyncWrite + 'static,
 {
     /// Consume the half and return the shared inner `Arc<AsyncMutex<T>>`.
+    #[must_use]
     pub fn into_inner(self) -> Arc<AsyncMutex<T>> {
         self.inner
     }
@@ -201,6 +206,9 @@ impl<W: AsyncWrite + ?Sized> AsyncWrite for &mut W {
 /// Returns a tuple `(a_to_b, b_to_a)` with the number of bytes copied in each
 /// direction. The function returns an error if either direction returns an
 /// error.
+///
+/// # Errors
+/// Returns an error if either direction's copy operation fails.
 pub async fn copy_bidirectional<A, B>(a: A, b: B) -> Result<(u64, u64), io::Error>
 where
     A: AsyncRead + AsyncWrite + 'static,

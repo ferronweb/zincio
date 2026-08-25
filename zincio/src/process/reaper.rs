@@ -44,6 +44,7 @@ impl ZombieReaper {
     /// Reaps a child process on drop, waiting asynchronously if possible.
     #[inline]
     pub(crate) fn reap_on_drop(&self, mut child: std::process::Child) {
+        let _ = self;
         if let Ok(Some(_)) = child.try_wait() {
             return;
         }
@@ -159,7 +160,7 @@ async fn zombie_reaper_fn(rx: async_channel::Receiver<ZombieReaperMessage>) {
         }
     }
 
-    zombie_reaper_fn_unix(rx).await
+    zombie_reaper_fn_unix(rx).await;
 }
 
 /// Probe whether `pidfd_open` is supported on this kernel.
@@ -171,7 +172,7 @@ fn pidfd_available() -> bool {
     let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, libc::getpid(), 0 as libc::c_uint) };
     if fd >= 0 {
         unsafe {
-            libc::close(fd as libc::c_int);
+            libc::close(i32::try_from(fd).unwrap());
         }
         true
     } else {
@@ -278,7 +279,7 @@ async fn zombie_reaper_fn_unix(rx: async_channel::Receiver<ZombieReaperMessage>)
             Either::Right((signal, _)) => {
                 if signal.is_err() {
                     break;
-                };
+                }
                 for mut process in processes.split_off(0) {
                     let try_wait = process.0.try_wait();
                     match try_wait {

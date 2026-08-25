@@ -7,8 +7,8 @@
 //! # Implementation details
 //!
 //! - Unix domain sockets use native async syscalls via the async driver when available.
-//! - When io_uring completion is available, operations complete directly.
-//! - For platforms without native async support, operations fall back to synchronous std::os::unix::net calls.
+//! - When `io_uring` completion is available, operations complete directly.
+//! - For platforms without native async support, operations fall back to synchronous `std::os::unix::net` calls.
 //! - The runtime must be active when calling these types' methods; otherwise they will panic.
 
 use std::cell::RefCell;
@@ -54,7 +54,7 @@ fn socket_addr_to_raw(path: &Path) -> Result<(libc::sockaddr_un, libc::socklen_t
     }
 
     let mut sockaddr = unsafe { MaybeUninit::<libc::sockaddr_un>::zeroed().assume_init() };
-    sockaddr.sun_family = libc::AF_UNIX as libc::sa_family_t;
+    sockaddr.sun_family = u16::try_from(libc::AF_UNIX).unwrap();
 
     let max_path_len = sockaddr.sun_path.len();
     if bytes.len() >= max_path_len {
@@ -65,11 +65,11 @@ fn socket_addr_to_raw(path: &Path) -> Result<(libc::sockaddr_un, libc::socklen_t
     }
 
     for (index, byte) in bytes.iter().copied().enumerate() {
-        sockaddr.sun_path[index] = byte as libc::c_char;
+        sockaddr.sun_path[index] = i8::try_from(byte).unwrap();
     }
 
     let addr_len =
-        (std::mem::offset_of!(libc::sockaddr_un, sun_path) + bytes.len() + 1) as libc::socklen_t;
+        u32::try_from(std::mem::offset_of!(libc::sockaddr_un, sun_path) + bytes.len() + 1).unwrap();
     #[cfg(any(
         target_os = "macos",
         target_os = "ios",
@@ -107,8 +107,8 @@ fn new_socket(
 /// # Implementation details
 ///
 /// - Unix domain sockets use native async syscalls via the async driver when available.
-/// - When io_uring completion is available, operations complete directly.
-/// - For platforms without native async support, operations fall back to synchronous std::os::unix::net calls.
+/// - When `io_uring` completion is available, operations complete directly.
+/// - For platforms without native async support, operations fall back to synchronous `std::os::unix::net` calls.
 /// - The runtime must be active when calling these methods; otherwise they will panic.
 ///
 /// # Examples
@@ -159,7 +159,7 @@ impl UnixStream {
         let (inner, raw_addr, raw_addr_len) = new_socket(path.as_ref())?;
         let stream = Self::from_std(inner)?;
 
-        let raw_addr_ptr = (&raw_addr as *const libc::sockaddr_un).cast::<libc::sockaddr>();
+        let raw_addr_ptr = (&raw const raw_addr).cast::<libc::sockaddr>();
         let handle = &stream.handle;
         let mut op = ConnectOp::new(handle, raw_addr_ptr, raw_addr_len);
         poll_fn(move |cx| handle.poll_op(cx, &mut op)).await?;
@@ -188,6 +188,10 @@ impl UnixStream {
     }
 
     /// Shuts down the connection.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub fn shutdown(&self, how: Shutdown) -> Result<(), io::Error> {
         match self.inner.shutdown(how) {
@@ -225,6 +229,10 @@ impl UnixStream {
     /// Converts this stream into a poll-only variant.
     ///
     /// The returned `PollUnixStream` will always use readiness-based I/O.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub fn into_poll(self) -> Result<PollUnixStream, io::Error> {
         let mut stream = self;
@@ -242,12 +250,16 @@ impl UnixStream {
 
 impl PollUnixStream {
     /// Connects to the specified Unix domain socket path using poll-based I/O.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub async fn connect(path: impl AsRef<Path>) -> Result<Self, io::Error> {
         let (inner, raw_addr, raw_addr_len) = new_socket(path.as_ref())?;
         let stream = Self::from_std(inner)?;
 
-        let raw_addr_ptr = (&raw_addr as *const libc::sockaddr_un).cast::<libc::sockaddr>();
+        let raw_addr_ptr = (&raw const raw_addr).cast::<libc::sockaddr>();
         let handle = &stream.stream.handle;
         let mut op = ConnectOp::new(handle, raw_addr_ptr, raw_addr_len);
         poll_fn(move |cx| handle.poll_op(cx, &mut op)).await?;
@@ -256,6 +268,10 @@ impl PollUnixStream {
     }
 
     /// Creates a new `PollUnixStream` from a standard library `UnixStream`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub fn from_std(inner: StdUnixStream) -> Result<Self, io::Error> {
         Ok(Self {
@@ -272,6 +288,10 @@ impl PollUnixStream {
     }
 
     /// Converts this poll stream into a completion-based `UnixStream`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub fn into_completion(self) -> Result<UnixStream, io::Error> {
         let mut stream = self.stream;
@@ -283,24 +303,40 @@ impl PollUnixStream {
     }
 
     /// Returns the local address of this connection.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub fn local_addr(&self) -> Result<SocketAddr, io::Error> {
         self.stream.local_addr()
     }
 
     /// Returns the remote address of this connection.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub fn peer_addr(&self) -> Result<SocketAddr, io::Error> {
         self.stream.peer_addr()
     }
 
     /// Shuts down the connection.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub fn shutdown(&self, how: Shutdown) -> Result<(), io::Error> {
         self.stream.shutdown(how)
     }
 
     /// Tries to perform an I/O operation on the socket, returning an error if it is not ready.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub fn try_io_readable<Io, IoR>(&self, io: Io) -> io::Result<IoR>
     where
@@ -318,6 +354,10 @@ impl PollUnixStream {
     }
 
     /// Tries to perform an I/O operation on the socket, returning an error if it is not ready.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub fn try_io_writable<Io, IoR>(&self, io: Io) -> io::Result<IoR>
     where
@@ -362,7 +402,7 @@ impl TokioAsyncRead for PollUnixStream {
 
         let this = self.get_mut();
         // Equivalent to .assume_init_mut() in Rust 1.93.0+
-        let unfilled = unsafe { &mut *(buf.unfilled_mut() as *mut [MaybeUninit<u8>] as *mut [u8]) };
+        let unfilled = unsafe { &mut *(std::ptr::from_mut::<[MaybeUninit<u8>]>(buf.unfilled_mut()) as *mut [u8]) };
         let buf_temp = unsafe { IoBufTemporaryPoll::new(unfilled.as_mut_ptr(), unfilled.len()) };
         let mut op = ReadOp::new(&this.stream.handle, buf_temp);
         match this.stream.handle.poll_op_poll(cx, &mut op) {
@@ -387,7 +427,7 @@ impl TokioAsyncWrite for PollUnixStream {
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
         let this = self.get_mut();
-        let buf = unsafe { IoBufTemporaryPoll::new(buf.as_ptr() as *mut u8, buf.len()) };
+        let buf = unsafe { IoBufTemporaryPoll::new(buf.as_ptr().cast_mut(), buf.len()) };
         let mut op = WriteOp::new(&this.stream.handle, buf);
         this.stream.handle.poll_op_poll(cx, &mut op)
     }
@@ -427,6 +467,10 @@ impl UnixStream {
     /// Creates a new `UnixStream` that is ready to use with readiness-based I/O.
     ///
     /// This is useful when you want to create a Unix stream that uses poll-based I/O.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub fn from_std_poll(inner: StdUnixStream) -> Result<PollUnixStream, io::Error> {
         let handle = ManuallyDrop::new(InnerRawHandle::new(
@@ -472,7 +516,7 @@ impl IntoRawFd for UnixStream {
         // We then move out the inner std stream and transfer its fd ownership to the caller.
         unsafe {
             ManuallyDrop::drop(&mut this.handle);
-            std::ptr::read(&this.inner).into_raw_fd()
+            std::ptr::read(&raw const this.inner).into_raw_fd()
         }
     }
 }

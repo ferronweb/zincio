@@ -106,7 +106,7 @@ where
 }
 
 /// Detached task wrapper: polls an inner future to completion and drops
-/// the output. No JoinState allocation, no wake propagation. Used for
+/// the output. No `JoinState` allocation, no wake propagation. Used for
 /// fire-and-forget http connection handlers where the handle is never
 /// awaited. Saves one Rc+RefCell alloc per connection (~10k RPS).
 struct DetachedFuture<F> {
@@ -226,7 +226,7 @@ impl BlockOnNotify {
     #[inline]
     fn waker(self: &Arc<Self>) -> Waker {
         // SAFETY: the vtable methods correctly clone/drop the Arc reference count.
-        unsafe { Waker::from_raw(Self::raw_waker(Arc::into_raw(Arc::clone(self)) as *const ())) }
+        unsafe { Waker::from_raw(Self::raw_waker(Arc::into_raw(Arc::clone(self)).cast::<()>())) }
     }
 
     #[inline]
@@ -243,28 +243,28 @@ impl BlockOnNotify {
 
     #[inline]
     unsafe fn raw_waker_clone(ptr: *const ()) -> RawWaker {
-        let notify = Arc::<Self>::from_raw(ptr as *const Self);
+        let notify = Arc::<Self>::from_raw(ptr.cast::<Self>());
         let cloned = Arc::clone(&notify);
         let _ = Arc::into_raw(notify);
-        Self::raw_waker(Arc::into_raw(cloned) as *const ())
+        Self::raw_waker(Arc::into_raw(cloned).cast::<()>())
     }
 
     #[inline]
     unsafe fn raw_waker_wake(ptr: *const ()) {
-        let notify = Arc::<Self>::from_raw(ptr as *const Self);
+        let notify = Arc::<Self>::from_raw(ptr.cast::<Self>());
         notify.wake_by_ref();
     }
 
     #[inline]
     unsafe fn raw_waker_wake_by_ref(ptr: *const ()) {
-        let notify = Arc::<Self>::from_raw(ptr as *const Self);
+        let notify = Arc::<Self>::from_raw(ptr.cast::<Self>());
         notify.wake_by_ref();
         let _ = Arc::into_raw(notify);
     }
 
     #[inline]
     unsafe fn raw_waker_drop(ptr: *const ()) {
-        drop(Arc::<Self>::from_raw(ptr as *const Self));
+        drop(Arc::<Self>::from_raw(ptr.cast::<Self>()));
     }
 }
 
@@ -278,9 +278,7 @@ impl CurrentRuntimeGuard {
     fn enter(runtime_inner: Rc<RuntimeInner>) -> Self {
         CURRENT_RUNTIME.with(|runtime| {
             let mut runtime = runtime.borrow_mut();
-            if runtime.is_some() {
-                panic!("can't spawn a runtime inside another runtime");
-            }
+            assert!(!runtime.is_some(), "can't spawn a runtime inside another runtime");
 
             *runtime = Some(runtime_inner);
         });
@@ -348,7 +346,7 @@ pub(crate) fn current_timer() -> Option<Rc<Timer>> {
 pub(crate) async fn current_zombie_reaper() -> Option<async_channel::Sender<ZombieReaperMessage>> {
     let runtime = CURRENT_RUNTIME.with(|runtime| {
         let runtime = runtime.borrow();
-        runtime.as_ref().map(|runtime_inner| runtime_inner.clone())
+        runtime.as_ref().map(std::clone::Clone::clone)
     })?;
     let option = runtime
         .zombie_reaper
@@ -413,13 +411,16 @@ pub fn spawn_detached(future: impl Future<Output = ()> + 'static) {
             panic!("can't spawn a task outside runtime");
         }
     });
-    runtime.spawn_detached(future)
+    runtime.spawn_detached(future);
 }
 
 /// Spawn a blocking task on the thread pool.
 ///
 /// This function spawns the given closure on a blocking thread pool and returns
 /// a future that resolves to the result.
+///
+/// # Errors
+/// Returns an error if spawning the blocking task fails.
 ///
 /// # Panics
 /// Panics if called outside a runtime context.
@@ -520,7 +521,7 @@ impl RuntimeInner {
         let task = Arc::new(Task {
             future: RefCell::new(Some(future)),
             queue: Rc::downgrade(&self.queue),
-            next_task: Rc::downgrade(&self.next_task),
+            next_queue: Rc::downgrade(&self.next_task),
             remote_queue: Arc::downgrade(&self.remote_queue),
             queued: AtomicBool::new(true),
             thread_id: std::thread::current().id(),
@@ -533,7 +534,7 @@ impl RuntimeInner {
         JoinHandle::new(state)
     }
 
-    /// Spawn a detached task without a JoinHandle. Avoids the `Rc<RefCell<JoinState>>`
+    /// Spawn a detached task without a `JoinHandle`. Avoids the `Rc<RefCell<JoinState>>`
     /// alloc/wake traffic for fire-and-forget handlers (e.g. hyper per-connection
     /// tasks where the handle is dropped immediately).
     #[inline]
@@ -543,7 +544,7 @@ impl RuntimeInner {
         let task = Arc::new(Task {
             future: RefCell::new(Some(future)),
             queue: Rc::downgrade(&self.queue),
-            next_task: Rc::downgrade(&self.next_task),
+            next_queue: Rc::downgrade(&self.next_task),
             remote_queue: Arc::downgrade(&self.remote_queue),
             queued: AtomicBool::new(true),
             thread_id: std::thread::current().id(),
@@ -578,10 +579,10 @@ impl RuntimeInner {
         }
     }
 
-    /// Drain ready tasks into the given batch. Priority: inline next_task ->
-    /// remote_queue -> main queue. This keeps burst wakes from io_uring
+    /// Drain ready tasks into the given batch. Priority: inline `next_task` ->
+    /// `remote_queue` -> main queue. This keeps burst wakes from `io_uring`
     /// completions on the fast path and avoids contention on the main
-    /// UnsafeCell queue, cutting p99 jitter.
+    /// `UnsafeCell` queue, cutting p99 jitter.
     #[inline]
     fn drain_ready(&self, batch: &mut Vec<Arc<Task>>, mut budget: usize) {
         if budget != 0 {
@@ -695,6 +696,9 @@ impl Runtime {
     /// Spawn a task on this runtime.
     ///
     /// Returns a `JoinHandle` that can be awaited to get the task's output.
+    ///
+    /// # Panics
+    /// Panics if the runtime has been dropped.
     #[inline]
     pub fn spawn<T>(&self, future: impl Future<Output = T> + 'static) -> JoinHandle<T>
     where
@@ -710,15 +714,24 @@ impl Runtime {
     ///
     /// Saves one `Rc<RefCell<JoinState>>` alloc per task; use for http
     /// per-connection handlers.
+    ///
+    /// # Panics
+    /// Panics if the runtime has been dropped.
     #[inline]
     pub fn spawn_detached(&self, future: impl Future<Output = ()> + 'static) {
         self.inner
             .as_ref()
             .expect("runtime has been dropped")
-            .spawn_detached(future)
+            .spawn_detached(future);
     }
 
     /// Spawn a blocking task on this runtime's thread pool.
+    ///
+    /// # Errors
+    /// Returns an error if spawning the blocking task fails.
+    ///
+    /// # Panics
+    /// Panics if the runtime has been dropped.
     #[inline]
     pub async fn spawn_blocking<T, F>(&self, f: F) -> Result<T, SpawnBlockingError>
     where
@@ -733,6 +746,9 @@ impl Runtime {
     ///
     /// This method blocks the current thread and drives the runtime until
     /// the provided future completes.
+    ///
+    /// # Panics
+    /// Panics if the runtime has been dropped.
     #[inline]
     pub fn block_on<T>(&self, future: impl Future<Output = T> + 'static) -> T
     where
@@ -838,9 +854,9 @@ impl Drop for Runtime {
         if let Some(zombie_reaper) = inner.zombie_reaper.borrow_mut().take() {
             zombie_reaper.close();
         }
-        let _runtime_guard = CurrentRuntimeGuard::enter(inner.clone());
+        let runtime_guard = CurrentRuntimeGuard::enter(inner.clone());
         drop(inner);
-        drop(_runtime_guard);
+        drop(runtime_guard);
     }
 }
 

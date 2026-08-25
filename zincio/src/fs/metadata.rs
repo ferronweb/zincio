@@ -13,12 +13,12 @@ use std::os::windows::fs::MetadataExt as WindowsMetadataExt;
 /// File metadata information.
 ///
 /// This type mirrors a subset of [`std::fs::Metadata`]. On supported Linux
-/// targets we back it by `statx` (via io_uring), otherwise we delegate to
+/// targets we back it by `statx` (via `io_uring`), otherwise we delegate to
 /// `std::fs::metadata` on a blocking thread.
 ///
 /// # Platform-specific behavior
 ///
-/// - On Linux with io_uring support and glibc/musl v1.2.3+, this uses the `statx` syscall directly
+/// - On Linux with `io_uring` support and glibc/musl v1.2.3+, this uses the `statx` syscall directly
 ///   for better async performance.
 /// - On other platforms, this uses the standard library's `std::fs::Metadata`.
 ///
@@ -63,6 +63,7 @@ impl Metadata {
     /// Returns the size of the file in bytes.
     #[allow(clippy::len_without_is_empty)]
     #[inline]
+    #[must_use]
     pub fn len(&self) -> u64 {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
@@ -73,12 +74,13 @@ impl Metadata {
 
     /// Returns the file permissions.
     #[inline]
+    #[must_use]
     pub fn permissions(&self) -> std::fs::Permissions {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
             MetadataInner::Statx(st) => {
                 use std::os::unix::fs::PermissionsExt;
-                std::fs::Permissions::from_mode(st.stx_mode as u32)
+                std::fs::Permissions::from_mode(u32::from(st.stx_mode))
             }
             MetadataInner::Std(md) => md.permissions(),
         }
@@ -86,6 +88,7 @@ impl Metadata {
 
     /// Returns the file type.
     #[inline]
+    #[must_use]
     pub fn file_type(&self) -> FileType {
         FileType {
             is_dir: self.is_dir(),
@@ -96,30 +99,33 @@ impl Metadata {
 
     /// Returns `true` if this metadata is for a directory.
     #[inline]
+    #[must_use]
     pub fn is_dir(&self) -> bool {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
-            MetadataInner::Statx(st) => (st.stx_mode as u32 & libc::S_IFMT) == libc::S_IFDIR,
+            MetadataInner::Statx(st) => (u32::from(st.stx_mode) & libc::S_IFMT) == libc::S_IFDIR,
             MetadataInner::Std(md) => md.is_dir(),
         }
     }
 
     /// Returns `true` if this metadata is for a regular file.
     #[inline]
+    #[must_use]
     pub fn is_file(&self) -> bool {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
-            MetadataInner::Statx(st) => (st.stx_mode as u32 & libc::S_IFMT) == libc::S_IFREG,
+            MetadataInner::Statx(st) => (u32::from(st.stx_mode) & libc::S_IFMT) == libc::S_IFREG,
             MetadataInner::Std(md) => md.is_file(),
         }
     }
 
     /// Returns `true` if this metadata is for a symbolic link.
     #[inline]
+    #[must_use]
     pub fn is_symlink(&self) -> bool {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
-            MetadataInner::Statx(st) => (st.stx_mode as u32 & libc::S_IFMT) == libc::S_IFLNK,
+            MetadataInner::Statx(st) => (u32::from(st.stx_mode) & libc::S_IFMT) == libc::S_IFLNK,
             MetadataInner::Std(md) => md.file_type().is_symlink(),
         }
     }
@@ -172,6 +178,7 @@ impl Metadata {
     /// Returns the device ID on which this file resides.
     #[cfg(target_os = "linux")]
     #[inline]
+    #[must_use]
     pub fn st_dev(&self) -> u64 {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
@@ -183,6 +190,7 @@ impl Metadata {
     /// Returns the inode number.
     #[cfg(target_os = "linux")]
     #[inline]
+    #[must_use]
     pub fn st_ino(&self) -> u64 {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
@@ -194,10 +202,11 @@ impl Metadata {
     /// Returns the file type and mode.
     #[cfg(target_os = "linux")]
     #[inline]
+    #[must_use]
     pub fn st_mode(&self) -> u32 {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
-            MetadataInner::Statx(st) => st.stx_mode as u32,
+            MetadataInner::Statx(st) => u32::from(st.stx_mode),
             MetadataInner::Std(st) => st.st_mode(),
         }
     }
@@ -205,10 +214,11 @@ impl Metadata {
     /// Returns the number of hard links to file.
     #[cfg(target_os = "linux")]
     #[inline]
+    #[must_use]
     pub fn st_nlink(&self) -> u64 {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
-            MetadataInner::Statx(st) => st.stx_nlink as u64, // u32 → u64
+            MetadataInner::Statx(st) => u64::from(st.stx_nlink), // u32 → u64
             MetadataInner::Std(st) => st.st_nlink(),
         }
     }
@@ -216,6 +226,7 @@ impl Metadata {
     /// Returns the user ID of the file owner.
     #[cfg(target_os = "linux")]
     #[inline]
+    #[must_use]
     pub fn st_uid(&self) -> u32 {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
@@ -227,6 +238,7 @@ impl Metadata {
     /// Returns the group ID of the file owner.
     #[cfg(target_os = "linux")]
     #[inline]
+    #[must_use]
     pub fn st_gid(&self) -> u32 {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
@@ -242,6 +254,7 @@ impl Metadata {
     /// standard `Metadata` variant (non-Linux or non-io_uring paths).
     #[cfg(target_os = "linux")]
     #[inline]
+    #[must_use]
     pub fn st_rdev(&self) -> u64 {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
@@ -253,6 +266,7 @@ impl Metadata {
     /// Returns the size of the file (if it is a regular file or a symbolic link) in bytes.
     #[cfg(target_os = "linux")]
     #[inline]
+    #[must_use]
     pub fn st_size(&self) -> u64 {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
@@ -264,6 +278,7 @@ impl Metadata {
     /// Returns the last access time of the file, in seconds since Unix Epoch.
     #[cfg(target_os = "linux")]
     #[inline]
+    #[must_use]
     pub fn st_atime(&self) -> i64 {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
@@ -275,10 +290,11 @@ impl Metadata {
     /// Returns the last access time of the file, in nanoseconds since `st_atime`.
     #[cfg(target_os = "linux")]
     #[inline]
+    #[must_use]
     pub fn st_atime_nsec(&self) -> i64 {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
-            MetadataInner::Statx(st) => st.stx_atime.tv_nsec as i64, // u32 → i64
+            MetadataInner::Statx(st) => i64::from(st.stx_atime.tv_nsec), // u32 → i64
             MetadataInner::Std(md) => md.st_atime_nsec(),
         }
     }
@@ -286,6 +302,7 @@ impl Metadata {
     /// Returns the last modification time of the file, in seconds since Unix Epoch.
     #[cfg(target_os = "linux")]
     #[inline]
+    #[must_use]
     pub fn st_mtime(&self) -> i64 {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
@@ -297,10 +314,11 @@ impl Metadata {
     /// Returns the last modification time of the file, in nanoseconds since `st_mtime`.
     #[cfg(target_os = "linux")]
     #[inline]
+    #[must_use]
     pub fn st_mtime_nsec(&self) -> i64 {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
-            MetadataInner::Statx(st) => st.stx_mtime.tv_nsec as i64, // u32 → i64
+            MetadataInner::Statx(st) => i64::from(st.stx_mtime.tv_nsec), // u32 → i64
             MetadataInner::Std(md) => md.st_mtime_nsec(),
         }
     }
@@ -308,6 +326,7 @@ impl Metadata {
     /// Returns the last status change time of the file, in seconds since Unix Epoch.
     #[cfg(target_os = "linux")]
     #[inline]
+    #[must_use]
     pub fn st_ctime(&self) -> i64 {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
@@ -319,10 +338,11 @@ impl Metadata {
     /// Returns the last status change time of the file, in nanoseconds since `st_ctime`.
     #[cfg(target_os = "linux")]
     #[inline]
+    #[must_use]
     pub fn st_ctime_nsec(&self) -> i64 {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
-            MetadataInner::Statx(st) => st.stx_ctime.tv_nsec as i64, // u32 → i64
+            MetadataInner::Statx(st) => i64::from(st.stx_ctime.tv_nsec), // u32 → i64
             MetadataInner::Std(md) => md.st_ctime_nsec(),
         }
     }
@@ -330,10 +350,11 @@ impl Metadata {
     /// Returns the "preferred" block size for efficient filesystem I/O.
     #[cfg(target_os = "linux")]
     #[inline]
+    #[must_use]
     pub fn st_blksize(&self) -> u64 {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
-            MetadataInner::Statx(st) => st.stx_blksize as u64, // u32 → u64
+            MetadataInner::Statx(st) => u64::from(st.stx_blksize), // u32 → u64
             MetadataInner::Std(md) => md.st_blksize(),
         }
     }
@@ -341,6 +362,7 @@ impl Metadata {
     /// Returns the number of blocks allocated to the file, 512-byte units.
     #[cfg(target_os = "linux")]
     #[inline]
+    #[must_use]
     pub fn st_blocks(&self) -> u64 {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
@@ -352,6 +374,7 @@ impl Metadata {
     /// Returns the subvolume ID of the file (statx-specific).
     #[cfg(target_os = "linux")]
     #[inline]
+    #[must_use]
     pub fn st_subvol(&self) -> Option<u64> {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
@@ -363,6 +386,7 @@ impl Metadata {
     /// Returns the file attributes (statx-specific).
     #[cfg(target_os = "linux")]
     #[inline]
+    #[must_use]
     pub fn st_attributes(&self) -> Option<u64> {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
@@ -374,6 +398,7 @@ impl Metadata {
     /// Returns the ID of the device containing the file.
     #[cfg(unix)]
     #[inline]
+    #[must_use]
     pub fn dev(&self) -> u64 {
         match &self.inner {
             MetadataInner::Std(md) => md.dev(),
@@ -385,6 +410,7 @@ impl Metadata {
     /// Returns the inode number.
     #[cfg(unix)]
     #[inline]
+    #[must_use]
     pub fn ino(&self) -> u64 {
         match &self.inner {
             MetadataInner::Std(md) => md.ino(),
@@ -396,28 +422,31 @@ impl Metadata {
     /// Returns the rights applied to this file.
     #[cfg(unix)]
     #[inline]
+    #[must_use]
     pub fn mode(&self) -> u32 {
         match &self.inner {
             MetadataInner::Std(md) => md.mode(),
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
-            MetadataInner::Statx(st) => st.stx_mode as u32,
+            MetadataInner::Statx(st) => u32::from(st.stx_mode),
         }
     }
 
     /// Returns the number of hard links pointing to this file.
     #[cfg(unix)]
     #[inline]
+    #[must_use]
     pub fn nlink(&self) -> u64 {
         match &self.inner {
             MetadataInner::Std(md) => md.nlink(),
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
-            MetadataInner::Statx(st) => st.stx_nlink as u64,
+            MetadataInner::Statx(st) => u64::from(st.stx_nlink),
         }
     }
 
     /// Returns the user ID of the owner of this file.
     #[cfg(unix)]
     #[inline]
+    #[must_use]
     pub fn uid(&self) -> u32 {
         match &self.inner {
             MetadataInner::Std(md) => md.uid(),
@@ -429,6 +458,7 @@ impl Metadata {
     /// Returns the group ID of the owner of this file.
     #[cfg(unix)]
     #[inline]
+    #[must_use]
     pub fn gid(&self) -> u32 {
         match &self.inner {
             MetadataInner::Std(md) => md.gid(),
@@ -440,6 +470,7 @@ impl Metadata {
     /// Returns the device ID of this file (if it is a special one).
     #[cfg(unix)]
     #[inline]
+    #[must_use]
     pub fn rdev(&self) -> u64 {
         match &self.inner {
             MetadataInner::Std(md) => md.rdev(),
@@ -451,6 +482,7 @@ impl Metadata {
     /// Returns the total size of this file in bytes.
     #[cfg(unix)]
     #[inline]
+    #[must_use]
     pub fn size(&self) -> u64 {
         match &self.inner {
             MetadataInner::Std(md) => md.size(),
@@ -462,6 +494,7 @@ impl Metadata {
     /// Returns the last access time of the file, in seconds since Unix Epoch.
     #[cfg(unix)]
     #[inline]
+    #[must_use]
     pub fn atime(&self) -> i64 {
         match &self.inner {
             MetadataInner::Std(md) => md.atime(),
@@ -473,17 +506,19 @@ impl Metadata {
     /// Returns the last access time of the file, in nanoseconds since `atime`.
     #[cfg(unix)]
     #[inline]
+    #[must_use]
     pub fn atime_nsec(&self) -> i64 {
         match &self.inner {
             MetadataInner::Std(md) => md.atime_nsec(),
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
-            MetadataInner::Statx(st) => st.stx_atime.tv_nsec as i64,
+            MetadataInner::Statx(st) => i64::from(st.stx_atime.tv_nsec),
         }
     }
 
     /// Returns the last modification time of the file, in seconds since Unix Epoch.
     #[cfg(unix)]
     #[inline]
+    #[must_use]
     pub fn mtime(&self) -> i64 {
         match &self.inner {
             MetadataInner::Std(md) => md.mtime(),
@@ -495,17 +530,19 @@ impl Metadata {
     /// Returns the last modification time of the file, in nanoseconds since `mtime`.
     #[cfg(unix)]
     #[inline]
+    #[must_use]
     pub fn mtime_nsec(&self) -> i64 {
         match &self.inner {
             MetadataInner::Std(md) => md.mtime_nsec(),
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
-            MetadataInner::Statx(st) => st.stx_mtime.tv_nsec as i64,
+            MetadataInner::Statx(st) => i64::from(st.stx_mtime.tv_nsec),
         }
     }
 
     /// Returns the last status change time of the file, in seconds since Unix Epoch.
     #[cfg(unix)]
     #[inline]
+    #[must_use]
     pub fn ctime(&self) -> i64 {
         match &self.inner {
             MetadataInner::Std(md) => md.ctime(),
@@ -517,28 +554,31 @@ impl Metadata {
     /// Returns the last status change time of the file, in nanoseconds since `ctime`.
     #[cfg(unix)]
     #[inline]
+    #[must_use]
     pub fn ctime_nsec(&self) -> i64 {
         match &self.inner {
             MetadataInner::Std(md) => md.ctime_nsec(),
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
-            MetadataInner::Statx(st) => st.stx_ctime.tv_nsec as i64,
+            MetadataInner::Statx(st) => i64::from(st.stx_ctime.tv_nsec),
         }
     }
 
     /// Returns the block size for filesystem I/O.
     #[cfg(unix)]
     #[inline]
+    #[must_use]
     pub fn blksize(&self) -> u64 {
         match &self.inner {
             MetadataInner::Std(md) => md.blksize(),
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
-            MetadataInner::Statx(st) => st.stx_blksize as u64,
+            MetadataInner::Statx(st) => u64::from(st.stx_blksize),
         }
     }
 
     /// Returns the number of blocks allocated to the file, in 512-byte units.
     #[cfg(unix)]
     #[inline]
+    #[must_use]
     pub fn blocks(&self) -> u64 {
         match &self.inner {
             MetadataInner::Std(md) => md.blocks(),
@@ -790,10 +830,10 @@ fn statx_timestamp_to_system_time(ts: &libc::statx_timestamp) -> io::Result<Syst
     let nanos = ts.tv_nsec;
 
     if secs >= 0 {
-        Ok(UNIX_EPOCH + Duration::new(secs as u64, nanos))
+        Ok(UNIX_EPOCH + Duration::new(u64::try_from(secs).unwrap(), nanos))
     } else {
         UNIX_EPOCH
-            .checked_sub(Duration::new((-secs) as u64, nanos))
+            .checked_sub(Duration::new(u64::try_from(-secs).unwrap(), nanos))
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid statx timestamp"))
     }
 }
@@ -835,6 +875,7 @@ impl FileType {
     /// }
     /// ```
     #[inline]
+    #[must_use]
     pub fn is_dir(&self) -> bool {
         self.is_dir
     }
@@ -852,6 +893,7 @@ impl FileType {
     /// }
     /// ```
     #[inline]
+    #[must_use]
     pub fn is_file(&self) -> bool {
         self.is_file
     }
@@ -869,6 +911,7 @@ impl FileType {
     /// }
     /// ```
     #[inline]
+    #[must_use]
     pub fn is_symlink(&self) -> bool {
         self.is_symlink
     }

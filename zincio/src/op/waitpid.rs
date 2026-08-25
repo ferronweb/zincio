@@ -87,7 +87,7 @@ impl WaitPidOp {
     #[inline]
     fn reap(pid: libc::pid_t) -> io::Result<i32> {
         let mut status: libc::c_int = 0;
-        let rc = unsafe { libc::waitpid(pid, &mut status, libc::WNOHANG) };
+        let rc = unsafe { libc::waitpid(pid, &raw mut status, libc::WNOHANG) };
         if rc < 0 {
             return Err(io::Error::last_os_error());
         }

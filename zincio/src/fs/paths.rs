@@ -49,26 +49,30 @@ pub async fn canonicalize<P: AsRef<std::path::Path>>(path: P) -> std::io::Result
 /// This function will return an error in the following situations:
 /// - `path` does not exist
 /// - The process lacks permissions to read the file
-pub async fn read(path: impl AsRef<std::path::Path>) -> std::io::Result<Vec<u8>> {
-    let mut file: File = OpenOptions::new().read(true).open(path).await?;
-    let mut bytes = Vec::new();
-    let mut buf = [0u8; 8192];
+pub fn read(
+    path: impl AsRef<std::path::Path>,
+) -> impl std::future::Future<Output = std::io::Result<Vec<u8>>> {
+    Box::pin(async move {
+        let mut file: File = OpenOptions::new().read(true).open(path).await?;
+        let mut bytes = Vec::new();
+        let mut buf = [0u8; 8192];
 
-    loop {
-        let (read, returned_buf) = file.read(buf).await;
-        let read = read?;
-        buf = returned_buf;
+        loop {
+            let (read, returned_buf) = Box::pin(file.read(buf)).await;
+            let read = read?;
+            buf = returned_buf;
 
-        if read == 0 {
-            break;
+            if read == 0 {
+                break;
+            }
+
+            let slice =
+                unsafe { std::slice::from_raw_parts(buf.as_buf_ptr(), buf.buf_len().min(read)) };
+            bytes.extend_from_slice(slice);
         }
 
-        let slice =
-            unsafe { std::slice::from_raw_parts(buf.as_buf_ptr(), buf.buf_len().min(read)) };
-        bytes.extend_from_slice(slice);
-    }
-
-    Ok(bytes)
+        Ok(bytes)
+    })
 }
 
 /// Reads the entire contents of a file into a string.
@@ -105,28 +109,30 @@ pub async fn read_to_string(path: impl AsRef<std::path::Path>) -> std::io::Resul
 /// This function will return an error in the following situations:
 /// - The file cannot be opened for writing
 /// - The write operation fails
-pub async fn write(
+pub fn write(
     path: impl AsRef<std::path::Path>,
     contents: impl AsRef<[u8]>,
-) -> std::io::Result<()> {
-    let mut file: File = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .open(path)
-        .await?;
+) -> impl std::future::Future<Output = std::io::Result<()>> {
+    Box::pin(async move {
+        let mut file: File = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path)
+            .await?;
 
-    let mut slice = contents.as_ref();
-    while !slice.is_empty() {
-        let (w, _) = file.write(slice.to_vec()).await;
-        let w = w?;
-        if w == 0 {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::WriteZero,
-                "failed to write whole buffer",
-            ));
+        let mut slice = contents.as_ref();
+        while !slice.is_empty() {
+            let (w, _) = Box::pin(file.write(slice.to_vec())).await;
+            let w = w?;
+            if w == 0 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::WriteZero,
+                    "failed to write whole buffer",
+                ));
+            }
+            slice = &slice[w..];
         }
-        slice = &slice[w..];
-    }
-    file.flush().await
+        Box::pin(file.flush()).await
+    })
 }

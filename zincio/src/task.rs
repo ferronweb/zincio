@@ -10,16 +10,16 @@ use futures_util::future::LocalBoxFuture;
 
 use crate::driver::AnyInterruptor;
 
-/// Inline capacity for the next_task fast-path queue. Burst Wakes from
-/// io_uring completions or hyper h2 stream wakes often hit 4-8 tasks at
-/// once; keeping them in a small inline VecDeque avoids contending on the
-/// main UnsafeCell<VecDeque> and reduces p99 jitter.
+/// Inline capacity for the `next_task` fast-path queue. Burst Wakes from
+/// `io_uring` completions or hyper h2 stream wakes often hit 4-8 tasks at
+/// once; keeping them in a small inline `VecDeque` avoids contending on the
+/// main `UnsafeCell`<VecDeque> and reduces p99 jitter.
 pub(crate) const NEXT_TASK_INLINE_CAP: usize = 8;
 
 pub struct Task {
     pub future: RefCell<Option<LocalBoxFuture<'static, ()>>>,
     pub queue: Weak<UnsafeCell<VecDeque<Arc<Task>>>>,
-    pub next_task: Weak<RefCell<VecDeque<Arc<Task>>>>,
+    pub next_queue: Weak<RefCell<VecDeque<Arc<Task>>>>,
     pub remote_queue: std::sync::Weak<SegQueue<Arc<Task>>>,
     pub interruptor: AnyInterruptor,
     pub queued: AtomicBool,
@@ -32,7 +32,7 @@ impl Task {
     #[inline]
     pub fn waker(self: &Arc<Self>) -> Waker {
         // SAFETY: the vtable methods correctly clone/drop the Arc reference count.
-        unsafe { Waker::from_raw(Self::raw_waker(Arc::into_raw(Arc::clone(self)) as *const ())) }
+        unsafe { Waker::from_raw(Self::raw_waker(Arc::into_raw(Arc::clone(self)).cast::<()>())) }
     }
 
     #[inline]
@@ -49,28 +49,28 @@ impl Task {
 
     #[inline]
     unsafe fn raw_waker_clone(ptr: *const ()) -> RawWaker {
-        let task = Arc::<Self>::from_raw(ptr as *const Self);
+        let task = Arc::<Self>::from_raw(ptr.cast::<Self>());
         let cloned = Arc::clone(&task);
         let _ = Arc::into_raw(task);
-        Self::raw_waker(Arc::into_raw(cloned) as *const ())
+        Self::raw_waker(Arc::into_raw(cloned).cast::<()>())
     }
 
     #[inline]
     unsafe fn raw_waker_wake(ptr: *const ()) {
-        let task = Arc::<Self>::from_raw(ptr as *const Self);
+        let task = Arc::<Self>::from_raw(ptr.cast::<Self>());
         Self::enqueue_if_needed(&task);
     }
 
     #[inline]
     unsafe fn raw_waker_wake_by_ref(ptr: *const ()) {
-        let task = Arc::<Self>::from_raw(ptr as *const Self);
+        let task = Arc::<Self>::from_raw(ptr.cast::<Self>());
         Self::enqueue_if_needed(&task);
         let _ = Arc::into_raw(task);
     }
 
     #[inline]
     unsafe fn raw_waker_drop(ptr: *const ()) {
-        drop(Arc::<Self>::from_raw(ptr as *const Self));
+        drop(Arc::<Self>::from_raw(ptr.cast::<Self>()));
     }
 
     #[inline]
@@ -78,7 +78,7 @@ impl Task {
         if std::thread::current().id() == task.thread_id {
             if !task.queued.swap(true, Ordering::Relaxed) {
                 let mut pushed_next = false;
-                if let Some(next_task) = task.next_task.upgrade() {
+                if let Some(next_task) = task.next_queue.upgrade() {
                     let mut next_task = next_task.borrow_mut();
                     if next_task.len() < NEXT_TASK_INLINE_CAP {
                         next_task.push_back(Arc::clone(task));

@@ -134,11 +134,11 @@ impl<B: IoVectoredBufMut> Op for ReadvOp<'_, B> {
         let result = {
             let mut iovecs = iovec_to_system(&mut bufs.as_iovecs_mut());
             let read =
-                unsafe { libc::readv(self.handle.handle, iovecs.as_mut_ptr(), iovecs.len() as _) };
+                unsafe { libc::readv(self.handle.handle, iovecs.as_mut_ptr(), i32::try_from(iovecs.len()).unwrap()) };
             if read == -1 {
                 Err(io::Error::last_os_error())
             } else {
-                Ok(read as usize)
+                Ok(usize::try_from(read).unwrap())
             }
         };
 
@@ -162,16 +162,13 @@ impl<B: IoVectoredBufMut> Op for ReadvOp<'_, B> {
         driver: &AnyDriver,
     ) -> Poll<io::Result<Self::Output>> {
         let result = if let Some(completion_token) = self.completion_token {
-            match driver.get_completion_result(completion_token) {
-                Some(result) => {
-                    self.completion_token = None;
-                    result
-                }
-                None => {
-                    // The completion is not ready yet
-                    driver.set_completion_waker(completion_token, cx.waker().clone());
-                    return Poll::Pending;
-                }
+            if let Some(result) = driver.get_completion_result(completion_token) {
+                self.completion_token = None;
+                result
+            } else {
+                // The completion is not ready yet
+                driver.set_completion_waker(completion_token, cx.waker().clone());
+                return Poll::Pending;
             }
         } else {
             // Submit the op
@@ -221,7 +218,7 @@ impl<B: IoVectoredBufMut> Op for ReadvOp<'_, B> {
             self.completion_wsabufs = None;
         }
 
-        Poll::Ready(Ok(result as usize))
+        Poll::Ready(Ok(usize::try_from(result).unwrap()))
     }
 
     #[cfg(windows)]
@@ -346,7 +343,7 @@ impl<B: IoVectoredBufMut> Op for ReadvOp<'_, B> {
         let entry = opcode::Readv::new(
             types::Fd(self.handle.handle),
             iovecs.as_mut_ptr(),
-            iovecs.len() as _,
+            u32::try_from(iovecs.len()).unwrap(),
         )
         .build()
         .user_data(user_data);

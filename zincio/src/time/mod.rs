@@ -24,30 +24,37 @@ pub use timeout::{timeout, Timeout, TimeoutError};
 
 /// Convenience builder: returns a `Sleep` future.
 #[inline]
+#[must_use]
 pub fn sleep(duration: std::time::Duration) -> Sleep {
     Sleep::new(duration)
 }
 
 /// Convenience builder allowing zero-behavior control for tiny durations.
 #[inline]
+#[must_use]
 pub fn sleep_with_zero_behavior(duration: std::time::Duration, behavior: ZeroBehavior) -> Sleep {
     Sleep::new_with_zero_behavior(duration, behavior)
 }
 
 /// Convenience builder: returns an `Interval`.
 #[inline]
+#[must_use]
 pub fn interval(period: std::time::Duration) -> Interval {
     Interval::new(period)
 }
 
 /// Convenience builder: returns a `Sleep` that completes at the provided absolute `Instant`.
 #[inline]
+#[must_use]
 pub fn sleep_until(deadline: std::time::Instant) -> Sleep {
     Sleep::sleep_until(deadline)
 }
 
 /// Convenience async function that awaits `future` but returns an error if it
 /// does not complete before the absolute `deadline` Instant.
+///
+/// # Errors
+/// Returns an error if `future` does not complete before `deadline`.
 #[inline]
 pub async fn timeout_at<T>(
     deadline: std::time::Instant,
@@ -60,6 +67,7 @@ pub async fn timeout_at<T>(
 /// Convenience builder: returns an `Interval` with the first tick scheduled to
 /// complete at `first_tick_instant` and subsequent ticks every `period`.
 #[inline]
+#[must_use]
 pub fn interval_at(
     first_tick_instant: std::time::Instant,
     period: std::time::Duration,

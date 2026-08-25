@@ -116,7 +116,7 @@ impl<B: IoBufMut> Op for ReadOp<'_, B> {
             if read == -1 {
                 Err(io::Error::last_os_error())
             } else {
-                Ok(read as usize)
+                Ok(usize::try_from(read).unwrap())
             }
         };
 
@@ -152,16 +152,13 @@ impl<B: IoBufMut> Op for ReadOp<'_, B> {
         driver: &AnyDriver,
     ) -> Poll<io::Result<Self::Output>> {
         let result = if let Some(completion_token) = self.completion_token {
-            match driver.get_completion_result(completion_token) {
-                Some(result) => {
-                    self.completion_token = None;
-                    result
-                }
-                None => {
-                    // The completion is not ready yet
-                    driver.set_completion_waker(completion_token, cx.waker().clone());
-                    return Poll::Pending;
-                }
+            if let Some(result) = driver.get_completion_result(completion_token) {
+                self.completion_token = None;
+                result
+            } else {
+                // The completion is not ready yet
+                driver.set_completion_waker(completion_token, cx.waker().clone());
+                return Poll::Pending;
             }
         } else {
             // Submit the op
@@ -187,7 +184,7 @@ impl<B: IoBufMut> Op for ReadOp<'_, B> {
             }
             return Poll::Ready(Err(io::Error::from_raw_os_error(-result)));
         }
-        let read = result as usize;
+        let read = usize::try_from(result).unwrap();
         let buf = self
             .buf
             .as_mut()
@@ -295,7 +292,7 @@ impl<B: IoBufMut> Op for ReadOp<'_, B> {
         let entry = opcode::Read::new(
             types::Fd(self.handle.handle),
             buf.as_buf_mut_ptr(),
-            (buf.buf_capacity()) as _,
+            u32::try_from(buf.buf_capacity()).unwrap(),
         )
         .build()
         .user_data(user_data);

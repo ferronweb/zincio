@@ -36,6 +36,7 @@ pub struct Interval {
 
 impl Interval {
     #[inline]
+    #[must_use]
     pub fn new(period: Duration) -> Self {
         Self {
             period,
@@ -61,6 +62,11 @@ impl Interval {
     /// Await the next tick. Returns the number of ticks that should be processed:
     /// - For `MissedTickBehavior::Skip` this will be `1`.
     /// - For `MissedTickBehavior::CatchUp` this may be `> 1` if several periods were missed.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the number of missed ticks when catching up overflows `u64`
+    /// (only possible with an extremely large elapsed time and tiny period).
     pub async fn tick(&mut self) -> u64 {
         let now = Instant::now();
 
@@ -124,7 +130,8 @@ impl Interval {
                     }
 
                     let elapsed = now.duration_since(base_next);
-                    let missed = (elapsed.as_nanos() / self.period.as_nanos()) as u64 + 1;
+                    let missed =
+                        u64::try_from(elapsed.as_nanos() / self.period.as_nanos()).unwrap() + 1;
 
                     // Advance base_next by `missed` periods to compute the next deadline.
                     let mut new_next = base_next;

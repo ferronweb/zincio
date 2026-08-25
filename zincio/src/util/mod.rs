@@ -4,7 +4,7 @@
 //! - `AsyncWrap`: a wrapper that adapts `AsyncRead`/`AsyncWrite` implementations
 //!   to the `tokio::io` traits, enabling interoperability with tokio-based code.
 //! - `supports_completion`: check if the current driver supports completion-based I/O.
-//! - `supports_io_uring`: check if the system supports io_uring with required operations.
+//! - `supports_io_uring`: check if the system supports `io_uring` with required operations.
 
 mod async_wrap;
 
@@ -17,15 +17,16 @@ use std::sync::OnceLock;
 /// Check if the current driver supports completion-based I/O operations.
 ///
 /// This function returns `true` when the runtime is using a driver that can
-/// handle completion-based operations (e.g., io_uring with completion queues).
+/// handle completion-based operations (e.g., `io_uring` with completion queues).
 #[inline]
+#[must_use]
 pub fn supports_completion() -> bool {
     current_driver().is_some_and(|driver| driver.supports_completion())
 }
 
-/// Check if the system supports io_uring with required operations.
+/// Check if the system supports `io_uring` with required operations.
 ///
-/// This function performs a runtime probe to verify that io_uring is available
+/// This function performs a runtime probe to verify that `io_uring` is available
 /// and supports the operations needed by the library (accept, connect, poll,
 /// timeout, read, write, etc.). On non-Linux platforms, this always returns `false`.
 ///
@@ -48,9 +49,8 @@ pub fn supports_io_uring() -> bool {
 fn detect_io_uring_support() -> bool {
     use io_uring::opcode;
 
-    let ring = match build_probe_ring() {
-        Ok(ring) => ring,
-        Err(_) => return false,
+    let Ok(ring) = build_probe_ring() else {
+        return false;
     };
 
     let mut probe = io_uring::Probe::new();

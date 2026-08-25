@@ -73,7 +73,7 @@ impl Op for SendfileOp<'_> {
             if returned == -1 {
                 Err(io::Error::last_os_error())
             } else {
-                Ok(returned as usize)
+                Ok(usize::try_from(returned).unwrap())
             }
         };
 

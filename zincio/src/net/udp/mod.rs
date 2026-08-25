@@ -5,9 +5,9 @@
 //!
 //! # Implementation details
 //!
-//! - On Linux with io_uring support, UDP operations use native async syscalls via the async driver.
-//! - When io_uring completion is available, operations complete directly.
-//! - For platforms without native async support, operations fall back to synchronous std::net calls.
+//! - On Linux with `io_uring` support, UDP operations use native async syscalls via the async driver.
+//! - When `io_uring` completion is available, operations complete directly.
+//! - For platforms without native async support, operations fall back to synchronous `std::net` calls.
 //! - The runtime must be active when calling these types' methods; otherwise they will panic.
 
 use std::cell::RefCell;
@@ -40,7 +40,7 @@ fn socket_addr_to_raw(address: SocketAddr) -> (libc::sockaddr_storage, libc::soc
     match address {
         SocketAddr::V4(address) => {
             let sockaddr = libc::sockaddr_in {
-                sin_family: libc::AF_INET as libc::sa_family_t,
+                sin_family: u16::try_from(libc::AF_INET).unwrap(),
                 sin_port: address.port().to_be(),
                 sin_addr: libc::in_addr {
                     s_addr: u32::from_ne_bytes(address.ip().octets()),
@@ -68,13 +68,13 @@ fn socket_addr_to_raw(address: SocketAddr) -> (libc::sockaddr_storage, libc::soc
                     .write(sockaddr);
                 (
                     storage.assume_init(),
-                    std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+                    u32::try_from(std::mem::size_of::<libc::sockaddr_in>()).unwrap(),
                 )
             }
         }
         SocketAddr::V6(address) => {
             let sockaddr = libc::sockaddr_in6 {
-                sin6_family: libc::AF_INET6 as libc::sa_family_t,
+                sin6_family: u16::try_from(libc::AF_INET6).unwrap(),
                 sin6_port: address.port().to_be(),
                 sin6_flowinfo: address.flowinfo(),
                 sin6_addr: libc::in6_addr {
@@ -103,7 +103,7 @@ fn socket_addr_to_raw(address: SocketAddr) -> (libc::sockaddr_storage, libc::soc
                     .write(sockaddr);
                 (
                     storage.assume_init(),
-                    std::mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t,
+                    u32::try_from(std::mem::size_of::<libc::sockaddr_in6>()).unwrap(),
                 )
             }
         }
@@ -155,7 +155,7 @@ fn socket_addr_to_raw(address: SocketAddr) -> (SOCKADDR_STORAGE, i32) {
 #[inline]
 async fn connect_one(handle: &InnerRawHandle, address: SocketAddr) -> Result<(), io::Error> {
     let (raw_addr, raw_addr_len) = socket_addr_to_raw(address);
-    let raw_addr_ptr = (&raw_addr as *const libc::sockaddr_storage).cast::<libc::sockaddr>();
+    let raw_addr_ptr = (&raw const raw_addr).cast::<libc::sockaddr>();
     let mut op = ConnectOp::new(handle, raw_addr_ptr, raw_addr_len);
     poll_fn(move |cx| handle.poll_op(cx, &mut op)).await
 }
@@ -188,9 +188,9 @@ async fn connect_one(
 ///
 /// # Implementation details
 ///
-/// - On Linux with io_uring support, UDP operations use native async syscalls via the async driver.
-/// - When io_uring completion is available, operations complete directly.
-/// - For platforms without native async support, operations fall back to synchronous std::net calls.
+/// - On Linux with `io_uring` support, UDP operations use native async syscalls via the async driver.
+/// - When `io_uring` completion is available, operations complete directly.
+/// - For platforms without native async support, operations fall back to synchronous `std::net` calls.
 /// - The runtime must be active when calling these methods; otherwise they will panic.
 ///
 /// # Examples
@@ -261,6 +261,10 @@ impl UdpSocket {
     /// Converts this socket into a poll-only variant.
     ///
     /// The returned `PollUdpSocket` will always use readiness-based I/O.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub fn into_poll(self) -> Result<PollUdpSocket, io::Error> {
         let mut socket = self;
@@ -277,6 +281,7 @@ impl UdpSocket {
 
     /// Converts this `UdpSocket` into the standard library `UdpSocket`.
     #[inline]
+    #[must_use]
     pub fn into_std(self) -> StdUdpSocket {
         let mut this = ManuallyDrop::new(self);
 
@@ -284,7 +289,7 @@ impl UdpSocket {
         // handle manually and move out the inner socket.
         unsafe {
             ManuallyDrop::drop(&mut this.handle);
-            std::ptr::read(&this.inner)
+            std::ptr::read(&raw const this.inner)
         }
     }
 

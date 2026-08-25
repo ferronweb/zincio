@@ -75,10 +75,10 @@ impl MioDriver {
         let mut poll = self.poll.borrow_mut();
         let mut events = self.events.borrow_mut();
         match poll.poll(&mut events, timeout) {
-            Ok(_) => {}
+            Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {} // strace edge case
-            Err(e) => panic!("mio poll failed while waiting for I/O events: {}", e),
-        };
+            Err(e) => panic!("mio poll failed while waiting for I/O events: {e}"),
+        }
 
         {
             let mut state = self.state.borrow_mut();

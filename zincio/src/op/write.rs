@@ -115,7 +115,7 @@ impl<B: IoBuf> Op for WriteOp<'_, B> {
             if written == -1 {
                 Err(io::Error::last_os_error())
             } else {
-                Ok(written as usize)
+                Ok(usize::try_from(written).unwrap())
             }
         };
 
@@ -146,16 +146,13 @@ impl<B: IoBuf> Op for WriteOp<'_, B> {
         driver: &AnyDriver,
     ) -> Poll<io::Result<Self::Output>> {
         let result = if let Some(completion_token) = self.completion_token {
-            match driver.get_completion_result(completion_token) {
-                Some(result) => {
-                    self.completion_token = None;
-                    result
-                }
-                None => {
-                    // The completion is not ready yet
-                    driver.set_completion_waker(completion_token, cx.waker().clone());
-                    return Poll::Pending;
-                }
+            if let Some(result) = driver.get_completion_result(completion_token) {
+                self.completion_token = None;
+                result
+            } else {
+                // The completion is not ready yet
+                driver.set_completion_waker(completion_token, cx.waker().clone());
+                return Poll::Pending;
             }
         } else {
             // Submit the op
@@ -171,7 +168,7 @@ impl<B: IoBuf> Op for WriteOp<'_, B> {
         if result < 0 {
             return Poll::Ready(Err(io::Error::from_raw_os_error(-result)));
         }
-        Poll::Ready(Ok(result as usize))
+        Poll::Ready(Ok(usize::try_from(result).unwrap()))
     }
 
     #[cfg(windows)]
@@ -271,7 +268,7 @@ impl<B: IoBuf> Op for WriteOp<'_, B> {
         let entry = opcode::Write::new(
             types::Fd(self.handle.handle),
             buf.as_buf_ptr(),
-            buf.buf_len() as _,
+            u32::try_from(buf.buf_len()).unwrap(),
         )
         .build()
         .user_data(user_data);

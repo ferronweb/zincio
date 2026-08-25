@@ -6,8 +6,8 @@
 //! # Implementation details
 //!
 //! - Unix domain sockets use native async syscalls via the async driver when available.
-//! - When io_uring completion is available, operations complete directly.
-//! - For platforms without native async support, operations fall back to synchronous std::os::unix::net calls.
+//! - When `io_uring` completion is available, operations complete directly.
+//! - For platforms without native async support, operations fall back to synchronous `std::os::unix::net` calls.
 //! - The runtime must be active when calling these types' methods; otherwise they will panic.
 
 use std::future::poll_fn;
@@ -32,8 +32,8 @@ use crate::op::AcceptUnixOp;
 /// # Implementation details
 ///
 /// - Unix domain sockets use native async syscalls via the async driver when available.
-/// - When io_uring completion is available, operations complete directly.
-/// - For platforms without native async support, operations fall back to synchronous std::os::unix::net calls.
+/// - When `io_uring` completion is available, operations complete directly.
+/// - For platforms without native async support, operations fall back to synchronous `std::os::unix::net` calls.
 /// - The runtime must be active when calling these methods; otherwise they will panic.
 ///
 /// # Examples
@@ -129,7 +129,7 @@ impl IntoRawFd for UnixListener {
         // We then move out the inner std stream and transfer its fd ownership to the caller.
         unsafe {
             ManuallyDrop::drop(&mut this.handle);
-            std::ptr::read(&this.inner).into_raw_fd()
+            std::ptr::read(&raw const this.inner).into_raw_fd()
         }
     }
 }

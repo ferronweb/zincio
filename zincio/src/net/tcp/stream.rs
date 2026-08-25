@@ -6,9 +6,9 @@
 //!
 //! # Implementation details
 //!
-//! - On Linux with io_uring support, TCP operations use native async syscalls via the async driver.
-//! - When io_uring completion is available, operations complete directly.
-//! - For platforms without native async support, operations fall back to synchronous std::net calls.
+//! - On Linux with `io_uring` support, TCP operations use native async syscalls via the async driver.
+//! - When `io_uring` completion is available, operations complete directly.
+//! - For platforms without native async support, operations fall back to synchronous `std::net` calls.
 //! - The runtime must be active when calling these types' methods; otherwise they will panic.
 
 use std::cell::RefCell;
@@ -50,7 +50,7 @@ fn socket_addr_to_raw(
     match address {
         SocketAddr::V4(address) => {
             let sockaddr = libc::sockaddr_in {
-                sin_family: libc::AF_INET as libc::sa_family_t,
+                sin_family: u16::try_from(libc::AF_INET).unwrap(),
                 sin_port: address.port().to_be(),
                 sin_addr: libc::in_addr {
                     s_addr: u32::from_ne_bytes(address.ip().octets()),
@@ -79,13 +79,13 @@ fn socket_addr_to_raw(
                 (
                     libc::AF_INET,
                     storage.assume_init(),
-                    std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+                    u32::try_from(std::mem::size_of::<libc::sockaddr_in>()).unwrap(),
                 )
             }
         }
         SocketAddr::V6(address) => {
             let sockaddr = libc::sockaddr_in6 {
-                sin6_family: libc::AF_INET6 as libc::sa_family_t,
+                sin6_family: u16::try_from(libc::AF_INET6).unwrap(),
                 sin6_port: address.port().to_be(),
                 sin6_flowinfo: address.flowinfo(),
                 sin6_addr: libc::in6_addr {
@@ -115,7 +115,7 @@ fn socket_addr_to_raw(
                 (
                     libc::AF_INET6,
                     storage.assume_init(),
-                    std::mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t,
+                    u32::try_from(std::mem::size_of::<libc::sockaddr_in6>()).unwrap(),
                 )
             }
         }
@@ -209,9 +209,9 @@ fn new_socket(
 ///
 /// # Implementation details
 ///
-/// - On Linux with io_uring support, TCP operations use native async syscalls via the async driver.
-/// - When io_uring completion is available, operations complete directly.
-/// - For platforms without native async support, operations fall back to synchronous std::net calls.
+/// - On Linux with `io_uring` support, TCP operations use native async syscalls via the async driver.
+/// - When `io_uring` completion is available, operations complete directly.
+/// - For platforms without native async support, operations fall back to synchronous `std::net` calls.
 /// - The runtime must be active when calling these methods; otherwise they will panic.
 ///
 /// # Examples
@@ -277,7 +277,7 @@ impl TcpStream {
         let stream = Self::from_std(inner)?;
 
         #[cfg(unix)]
-        let raw_addr_ptr = (&raw_addr as *const libc::sockaddr_storage).cast::<libc::sockaddr>();
+        let raw_addr_ptr = (&raw const raw_addr).cast::<libc::sockaddr>();
         #[cfg(windows)]
         let raw_addr_ptr = (&raw_addr as *const SOCKADDR_STORAGE).cast::<SOCKADDR>();
         let handle = &stream.handle;
@@ -307,7 +307,7 @@ impl TcpStream {
         self.inner.peer_addr()
     }
 
-    /// Returns the current state of the TCP_NODELAY option for this socket.
+    /// Returns the current state of the `TCP_NODELAY` option for this socket.
     ///
     /// # Errors
     ///
@@ -317,7 +317,7 @@ impl TcpStream {
         self.inner.nodelay()
     }
 
-    /// Sets the value of the TCP_NODELAY option for this socket.
+    /// Sets the value of the `TCP_NODELAY` option for this socket.
     ///
     /// When set, this disables the Nagle algorithm, which means that small
     /// packets are sent immediately rather than being buffered.
@@ -331,6 +331,10 @@ impl TcpStream {
     }
 
     /// Shuts down the connection.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub fn shutdown(&self, how: Shutdown) -> Result<(), io::Error> {
         match self.inner.shutdown(how) {
@@ -388,6 +392,10 @@ impl TcpStream {
     /// Converts this stream into a poll-only variant.
     ///
     /// The returned `PollTcpStream` will always use readiness-based I/O.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub fn into_poll(self) -> Result<PollTcpStream, io::Error> {
         let mut stream = self;
@@ -405,6 +413,10 @@ impl TcpStream {
 
 impl PollTcpStream {
     /// Connects to the specified address using poll-based I/O.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub async fn connect(address: impl ToSocketAddrs) -> Result<Self, io::Error> {
         let addresses = address.to_socket_addrs()?;
@@ -425,7 +437,7 @@ impl PollTcpStream {
         let stream = Self::from_std(inner)?;
 
         #[cfg(unix)]
-        let raw_addr_ptr = (&raw_addr as *const libc::sockaddr_storage).cast::<libc::sockaddr>();
+        let raw_addr_ptr = (&raw const raw_addr).cast::<libc::sockaddr>();
         #[cfg(windows)]
         let raw_addr_ptr = (&raw_addr as *const SOCKADDR_STORAGE).cast::<SOCKADDR>();
 
@@ -437,6 +449,10 @@ impl PollTcpStream {
     }
 
     /// Creates a new `PollTcpStream` from a standard library `TcpStream`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub fn from_std(inner: std::net::TcpStream) -> Result<Self, io::Error> {
         Ok(Self {
@@ -453,6 +469,10 @@ impl PollTcpStream {
     }
 
     /// Converts this poll stream into a completion-based `TcpStream`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub fn into_completion(self) -> Result<TcpStream, io::Error> {
         let mut stream = self.stream;
@@ -464,30 +484,50 @@ impl PollTcpStream {
     }
 
     /// Returns the local address of this connection.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub fn local_addr(&self) -> Result<SocketAddr, io::Error> {
         self.stream.local_addr()
     }
 
     /// Returns the remote address of this connection.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub fn peer_addr(&self) -> Result<SocketAddr, io::Error> {
         self.stream.peer_addr()
     }
 
-    /// Returns the current state of the TCP_NODELAY option for this socket.
+    /// Returns the current state of the `TCP_NODELAY` option for this socket.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub fn nodelay(&self) -> Result<bool, io::Error> {
         self.stream.nodelay()
     }
 
-    /// Sets the value of the TCP_NODELAY option for this socket.
+    /// Sets the value of the `TCP_NODELAY` option for this socket.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub fn set_nodelay(&self, nodelay: bool) -> Result<(), io::Error> {
         self.stream.set_nodelay(nodelay)
     }
 
     /// Shuts down the connection.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub fn shutdown(&self, how: Shutdown) -> Result<(), io::Error> {
         self.stream.shutdown(how)
@@ -496,6 +536,10 @@ impl PollTcpStream {
     /// Peeks at data from the socket without removing it from the buffer.
     ///
     /// This method uses readiness-based I/O and is compatible with `tokio::io`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub async fn peek(&self, buf: &mut [u8]) -> Result<usize, io::Error> {
         let handle = &self.stream.handle;
@@ -505,6 +549,10 @@ impl PollTcpStream {
     }
 
     /// Tries to perform an I/O operation on the socket, returning an error if it is not ready.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub fn try_io_readable<Io, IoR>(&self, io: Io) -> io::Result<IoR>
     where
@@ -522,6 +570,10 @@ impl PollTcpStream {
     }
 
     /// Tries to perform an I/O operation on the socket, returning an error if it is not ready.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
     #[inline]
     pub fn try_io_writable<Io, IoR>(&self, io: Io) -> io::Result<IoR>
     where
@@ -565,7 +617,7 @@ impl IntoRawFd for TcpStream {
         // We then move out the inner std stream and transfer its fd ownership to the caller.
         unsafe {
             ManuallyDrop::drop(&mut this.handle);
-            std::ptr::read(&this.inner).into_raw_fd()
+            std::ptr::read(&raw const this.inner).into_raw_fd()
         }
     }
 }
@@ -668,7 +720,7 @@ impl TokioAsyncRead for PollTcpStream {
 
         let this = self.get_mut();
         // Equivalent to .assume_init_mut() in Rust 1.93.0+
-        let unfilled = unsafe { &mut *(buf.unfilled_mut() as *mut [MaybeUninit<u8>] as *mut [u8]) };
+        let unfilled = unsafe { &mut *(std::ptr::from_mut::<[MaybeUninit<u8>]>(buf.unfilled_mut()) as *mut [u8]) };
         let buf_temp = unsafe { IoBufTemporaryPoll::new(unfilled.as_mut_ptr(), unfilled.len()) };
         let mut op = ReadOp::new(&this.stream.handle, buf_temp);
         match this.stream.handle.poll_op_poll(cx, &mut op) {
@@ -719,7 +771,7 @@ impl TokioAsyncWrite for PollTcpStream {
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
         let this = self.get_mut();
-        let buf = unsafe { IoBufTemporaryPoll::new(buf.as_ptr() as *mut u8, buf.len()) };
+        let buf = unsafe { IoBufTemporaryPoll::new(buf.as_ptr().cast_mut(), buf.len()) };
         let mut op = WriteOp::new(&this.stream.handle, buf);
         this.stream.handle.poll_op_poll(cx, &mut op)
     }

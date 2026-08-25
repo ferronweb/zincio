@@ -28,18 +28,18 @@ use crate::op::Op;
 fn sockaddr_storage_to_socketaddr(
     storage: &libc::sockaddr_storage,
 ) -> Result<SocketAddr, io::Error> {
-    let family = storage.ss_family as libc::c_int;
+    let family = libc::c_int::from(storage.ss_family);
 
     if family == libc::AF_INET {
         let addr_in: &libc::sockaddr_in =
-            unsafe { &*(storage as *const _ as *const libc::sockaddr_in) };
+            unsafe { &*std::ptr::from_ref(storage).cast::<libc::sockaddr_in>() };
         let port = u16::from_be(addr_in.sin_port);
         let ip_u32 = u32::from_be(addr_in.sin_addr.s_addr);
         let ip = std::net::Ipv4Addr::from(ip_u32);
         Ok(SocketAddr::V4(std::net::SocketAddrV4::new(ip, port)))
     } else if family == libc::AF_INET6 {
         let addr_in6: &libc::sockaddr_in6 =
-            unsafe { &*(storage as *const _ as *const libc::sockaddr_in6) };
+            unsafe { &*std::ptr::from_ref(storage).cast::<libc::sockaddr_in6>() };
         let port = u16::from_be(addr_in6.sin6_port);
         let ip = std::net::Ipv6Addr::from(addr_in6.sin6_addr.s6_addr);
         Ok(SocketAddr::V6(std::net::SocketAddrV6::new(
@@ -214,7 +214,7 @@ impl<B: IoBufMut> Op for RecvfromOp<'_, B> {
         #[cfg(unix)]
         let result = {
             let mut addr = MaybeUninit::<libc::sockaddr_storage>::zeroed();
-            let mut addr_len = std::mem::size_of::<libc::sockaddr_storage>() as libc::socklen_t;
+            let mut addr_len = u32::try_from(std::mem::size_of::<libc::sockaddr_storage>()).unwrap();
             let read = unsafe {
                 libc::recvfrom(
                     self.handle.handle,
@@ -222,7 +222,7 @@ impl<B: IoBufMut> Op for RecvfromOp<'_, B> {
                     buf.buf_capacity(),
                     if self.peek { libc::MSG_PEEK } else { 0 },
                     addr.as_mut_ptr().cast::<libc::sockaddr>(),
-                    &mut addr_len,
+                    &raw mut addr_len,
                 )
             };
 
@@ -230,7 +230,7 @@ impl<B: IoBufMut> Op for RecvfromOp<'_, B> {
                 Err(io::Error::last_os_error())
             } else {
                 let address = sockaddr_storage_to_socketaddr(unsafe { &addr.assume_init() })?;
-                Ok((read as usize, address))
+                Ok((usize::try_from(read).unwrap(), address))
             }
         };
 
@@ -255,7 +255,7 @@ impl<B: IoBufMut> Op for RecvfromOp<'_, B> {
             }
             Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
                 match driver.submit_poll(self.handle, cx.waker().clone(), Interest::READABLE) {
-                    Ok(_) => Poll::Pending,
+                    Ok(()) => Poll::Pending,
                     Err(err) => Poll::Ready(Err(err)),
                 }
             }
@@ -271,15 +271,12 @@ impl<B: IoBufMut> Op for RecvfromOp<'_, B> {
         driver: &AnyDriver,
     ) -> Poll<io::Result<Self::Output>> {
         let result = if let Some(completion_token) = self.completion_token {
-            match driver.get_completion_result(completion_token) {
-                Some(result) => {
-                    self.completion_token = None;
-                    result
-                }
-                None => {
-                    driver.set_completion_waker(completion_token, cx.waker().clone());
-                    return Poll::Pending;
-                }
+            if let Some(result) = driver.get_completion_result(completion_token) {
+                self.completion_token = None;
+                result
+            } else {
+                driver.set_completion_waker(completion_token, cx.waker().clone());
+                return Poll::Pending;
             }
         } else {
             match driver.submit_completion(self, cx.waker().clone()) {
@@ -294,7 +291,7 @@ impl<B: IoBufMut> Op for RecvfromOp<'_, B> {
         if result < 0 {
             return Poll::Ready(Err(io::Error::from_raw_os_error(-result)));
         }
-        let read = result as usize;
+        let read = usize::try_from(result).unwrap();
 
         #[cfg(target_os = "linux")]
         {
@@ -437,10 +434,10 @@ impl<B: IoBufMut> Op for RecvfromOp<'_, B> {
         };
         completion.msghdr = unsafe { std::mem::zeroed::<libc::msghdr>() };
         completion.msghdr.msg_name =
-            &mut completion.addr as *mut libc::sockaddr_storage as *mut libc::c_void;
+            (&raw mut completion.addr).cast::<libc::c_void>();
         completion.msghdr.msg_namelen =
-            std::mem::size_of::<libc::sockaddr_storage>() as libc::socklen_t;
-        completion.msghdr.msg_iov = &mut completion.iovec as *mut libc::iovec;
+            u32::try_from(std::mem::size_of::<libc::sockaddr_storage>()).unwrap();
+        completion.msghdr.msg_iov = &raw mut completion.iovec;
         completion.msghdr.msg_iovlen = 1;
         completion.msghdr.msg_control = std::ptr::null_mut();
         completion.msghdr.msg_controllen = 0;
@@ -448,7 +445,7 @@ impl<B: IoBufMut> Op for RecvfromOp<'_, B> {
 
         let entry = opcode::RecvMsg::new(
             types::Fd(self.handle.handle),
-            &mut completion.msghdr as *mut libc::msghdr,
+            &raw mut completion.msghdr,
         )
         .flags(if self.peek { libc::MSG_PEEK as u32 } else { 0 })
         .build()

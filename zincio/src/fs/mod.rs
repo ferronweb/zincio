@@ -8,10 +8,10 @@
 //! - Metadata: [`metadata`], [`symlink_metadata`] for file information
 //!
 //! Implementation notes:
-//! - On Linux with io_uring support, some operations use native async syscalls (e.g. `statx`, `linkat`)
-//!   via the async driver. When io_uring completion is available, operations complete directly.
+//! - On Linux with `io_uring` support, some operations use native async syscalls (e.g. `statx`, `linkat`)
+//!   via the async driver. When `io_uring` completion is available, operations complete directly.
 //! - For platforms without native async support, operations either offload to a blocking thread pool
-//!   (if file I/O offload is enabled) or fall back to synchronous std::fs calls.
+//!   (if file I/O offload is enabled) or fall back to synchronous `std::fs` calls.
 //! - The runtime must be active when calling these functions; otherwise they will panic.
 //!
 //! # Examples

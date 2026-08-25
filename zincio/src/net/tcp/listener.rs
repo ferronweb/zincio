@@ -5,9 +5,9 @@
 //!
 //! # Implementation details
 //!
-//! - On Linux with io_uring support, TCP operations use native async syscalls via the async driver.
-//! - When io_uring completion is available, operations complete directly.
-//! - For platforms without native async support, operations fall back to synchronous std::net calls.
+//! - On Linux with `io_uring` support, TCP operations use native async syscalls via the async driver.
+//! - When `io_uring` completion is available, operations complete directly.
+//! - For platforms without native async support, operations fall back to synchronous `std::net` calls.
 //! - The runtime must be active when calling these types' methods; otherwise they will panic.
 
 use std::future::poll_fn;
@@ -36,7 +36,7 @@ fn socket_addr_to_raw(
     match address {
         SocketAddr::V4(address) => {
             let sockaddr = libc::sockaddr_in {
-                sin_family: libc::AF_INET as libc::sa_family_t,
+                sin_family: u16::try_from(libc::AF_INET).unwrap(),
                 sin_port: address.port().to_be(),
                 sin_addr: libc::in_addr {
                     s_addr: u32::from_ne_bytes(address.ip().octets()),
@@ -65,13 +65,13 @@ fn socket_addr_to_raw(
                 (
                     libc::AF_INET,
                     storage.assume_init(),
-                    std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+                    u32::try_from(std::mem::size_of::<libc::sockaddr_in>()).unwrap(),
                 )
             }
         }
         SocketAddr::V6(address) => {
             let sockaddr = libc::sockaddr_in6 {
-                sin6_family: libc::AF_INET6 as libc::sa_family_t,
+                sin6_family: u16::try_from(libc::AF_INET6).unwrap(),
                 sin6_port: address.port().to_be(),
                 sin6_flowinfo: address.flowinfo(),
                 sin6_addr: libc::in6_addr {
@@ -101,7 +101,7 @@ fn socket_addr_to_raw(
                 (
                     libc::AF_INET6,
                     storage.assume_init(),
-                    std::mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t,
+                    u32::try_from(std::mem::size_of::<libc::sockaddr_in6>()).unwrap(),
                 )
             }
         }
@@ -122,8 +122,8 @@ fn bind_one(address: SocketAddr) -> Result<StdTcpListener, io::Error> {
             socket_fd,
             libc::SOL_SOCKET,
             libc::SO_REUSEADDR,
-            (&reuse_addr as *const libc::c_int).cast(),
-            std::mem::size_of_val(&reuse_addr) as libc::socklen_t,
+            (&raw const reuse_addr).cast(),
+                u32::try_from(std::mem::size_of_val(&reuse_addr)).unwrap(),
         )
     };
     if reuse_addr_result == -1 {
@@ -139,8 +139,8 @@ fn bind_one(address: SocketAddr) -> Result<StdTcpListener, io::Error> {
                 socket_fd,
                 libc::IPPROTO_IPV6,
                 libc::IPV6_V6ONLY,
-                (&ipv6_only as *const libc::c_int).cast(),
-                std::mem::size_of_val(&ipv6_only) as libc::socklen_t,
+                (&raw const ipv6_only).cast(),
+                u32::try_from(std::mem::size_of_val(&ipv6_only)).unwrap(),
             )
         };
         if ipv6_only_result == -1 {
@@ -153,7 +153,7 @@ fn bind_one(address: SocketAddr) -> Result<StdTcpListener, io::Error> {
     let bind_result = unsafe {
         libc::bind(
             socket_fd,
-            (&raw_addr as *const libc::sockaddr_storage).cast::<libc::sockaddr>(),
+            (&raw const raw_addr).cast::<libc::sockaddr>(),
             raw_addr_len,
         )
     };
@@ -285,9 +285,9 @@ fn bind_one(address: SocketAddr) -> Result<StdTcpListener, io::Error> {
 ///
 /// # Implementation details
 ///
-/// - On Linux with io_uring support, TCP operations use native async syscalls via the async driver.
-/// - When io_uring completion is available, operations complete directly.
-/// - For platforms without native async support, operations fall back to synchronous std::net calls.
+/// - On Linux with `io_uring` support, TCP operations use native async syscalls via the async driver.
+/// - When `io_uring` completion is available, operations complete directly.
+/// - For platforms without native async support, operations fall back to synchronous `std::net` calls.
 /// - The runtime must be active when calling these methods; otherwise they will panic.
 ///
 /// # Examples
@@ -432,7 +432,7 @@ impl IntoRawFd for TcpListener {
         // We then move out the inner std stream and transfer its fd ownership to the caller.
         unsafe {
             ManuallyDrop::drop(&mut this.handle);
-            std::ptr::read(&this.inner).into_raw_fd()
+            std::ptr::read(&raw const this.inner).into_raw_fd()
         }
     }
 }

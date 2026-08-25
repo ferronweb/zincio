@@ -90,14 +90,14 @@ where
             let buf_read = this.read_buf.take();
             if let Some((buf_read, advanced, n)) = buf_read {
                 let unfilled =
-                    unsafe { &mut *(buf.unfilled_mut() as *mut [MaybeUninit<u8>] as *mut [u8]) };
+                    unsafe { &mut *(std::ptr::from_mut::<[MaybeUninit<u8>]>(buf.unfilled_mut()) as *mut [u8]) };
                 let copy_len = (n - advanced).min(unfilled.len());
                 unsafe {
                     std::ptr::copy_nonoverlapping(
                         buf_read.as_ptr().add(advanced),
                         unfilled.as_mut_ptr(),
                         copy_len,
-                    )
+                    );
                 };
                 unsafe { buf.assume_init(copy_len) };
                 buf.advance(copy_len);
@@ -131,14 +131,14 @@ where
             Ok(n) => {
                 // Put buf_read into buf
                 let unfilled =
-                    unsafe { &mut *(buf.unfilled_mut() as *mut [MaybeUninit<u8>] as *mut [u8]) };
+                    unsafe { &mut *(std::ptr::from_mut::<[MaybeUninit<u8>]>(buf.unfilled_mut()) as *mut [u8]) };
                 let copy_len = n.min(unfilled.len());
                 unsafe {
                     std::ptr::copy_nonoverlapping(
                         buf_read.as_ptr(),
                         unfilled.as_mut_ptr(),
                         copy_len,
-                    )
+                    );
                 };
                 unsafe { buf.assume_init(copy_len) };
                 buf.advance(copy_len);

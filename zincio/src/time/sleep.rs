@@ -47,6 +47,7 @@ pub struct Sleep {
 impl Sleep {
     /// Create a new Sleep instance for the provided `duration`.
     #[inline]
+    #[must_use]
     pub fn new(duration: Duration) -> Self {
         Self {
             handle: None,
@@ -60,6 +61,7 @@ impl Sleep {
 
     /// Create a Sleep with custom behavior for zero-length waits.
     #[inline]
+    #[must_use]
     pub fn new_with_zero_behavior(duration: Duration, zero_behavior: ZeroBehavior) -> Self {
         Self {
             handle: None,
@@ -76,6 +78,7 @@ impl Sleep {
     /// This is a convenience constructor that computes the relative duration
     /// from `Instant::now()` to the provided `deadline`.
     #[inline]
+    #[must_use]
     pub fn sleep_until(deadline: Instant) -> Self {
         Self {
             handle: None,
@@ -121,12 +124,12 @@ impl Sleep {
                 // If we haven't scheduled the one-shot yield yet, schedule it
                 // by waking ourselves and return Pending. On the subsequent
                 // poll we will observe `yield_scheduled` and complete.
-                if !self.yield_scheduled.replace(true) {
-                    cx.waker().wake_by_ref();
-                    Poll::Pending
-                } else {
+                if self.yield_scheduled.replace(true) {
                     self.fired.set(true);
                     Poll::Ready(())
+                } else {
+                    cx.waker().wake_by_ref();
+                    Poll::Pending
                 }
             }
         }
@@ -176,25 +179,21 @@ impl Future for Sleep {
         // Spurious wakeup: the timer might have woken us up early, or another
         // waker woke the task. Re-register the waker to ensure we get woken up
         // again.
-        let handle = match this.handle.take() {
-            Some(handle) => handle,
-            None => return Poll::Pending,
+        let Some(handle) = this.handle.take() else {
+            return Poll::Pending;
         };
         let Some(timer_rc) = current_timer() else {
             return Poll::Pending;
         };
         timer_rc.cancel(handle);
         let waker = cx.waker().clone();
-        match timer_rc.submit(this.deadline, waker) {
-            Some(handle) => {
-                this.handle = Some(handle);
-                Poll::Pending
-            }
-            None => {
-                // Timer driver woke us immediately (duration rounded to 0 or similar).
-                this.fired.set(true);
-                Poll::Ready(())
-            }
+        if let Some(handle) = timer_rc.submit(this.deadline, waker) {
+            this.handle = Some(handle);
+            Poll::Pending
+        } else {
+            // Timer driver woke us immediately (duration rounded to 0 or similar).
+            this.fired.set(true);
+            Poll::Ready(())
         }
     }
 }

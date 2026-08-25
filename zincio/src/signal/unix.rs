@@ -40,66 +40,77 @@ pub struct SignalKind(libc::c_int);
 impl SignalKind {
     /// Create a new `SignalKind` from a raw signal number.
     #[inline]
+    #[must_use]
     pub const fn new(raw: libc::c_int) -> Self {
         Self(raw)
     }
 
     /// Return the raw signal number.
     #[inline]
+    #[must_use]
     pub const fn as_raw(self) -> libc::c_int {
         self.0
     }
 
     /// SIGINT - interrupt signal (Ctrl-C).
     #[inline]
+    #[must_use]
     pub const fn interrupt() -> Self {
         Self(libc::SIGINT)
     }
 
     /// SIGTERM - termination signal.
     #[inline]
+    #[must_use]
     pub const fn terminate() -> Self {
         Self(libc::SIGTERM)
     }
 
     /// SIGHUP - hangup signal.
     #[inline]
+    #[must_use]
     pub const fn hangup() -> Self {
         Self(libc::SIGHUP)
     }
 
     /// SIGQUIT - quit signal.
     #[inline]
+    #[must_use]
     pub const fn quit() -> Self {
         Self(libc::SIGQUIT)
     }
 
     /// SIGUSR1 - user-defined signal 1.
     #[inline]
+    #[must_use]
     pub const fn user_defined1() -> Self {
         Self(libc::SIGUSR1)
     }
 
     /// SIGUSR2 - user-defined signal 2.
     #[inline]
+    #[must_use]
     pub const fn user_defined2() -> Self {
         Self(libc::SIGUSR2)
     }
 
     /// SIGCHLD - child process terminated or stopped.
     #[inline]
+    #[must_use]
     pub const fn child() -> Self {
         Self(libc::SIGCHLD)
     }
 
     /// SIGALRM - alarm clock signal.
     #[inline]
+    #[must_use]
     pub const fn alarm() -> Self {
         Self(libc::SIGALRM)
     }
 
     /// SIGPIPE - write to pipe with no readers.
     #[inline]
+    #[must_use]
     pub const fn pipe() -> Self {
         Self(libc::SIGPIPE)
     }
@@ -152,6 +163,11 @@ impl Signal {
     ///
     /// Creates a new signal listener for the given signal kind. If this is the
     /// first listener for this signal, the signal handler will be installed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the signal handler cannot be installed or the signal
+    /// listener cannot be registered.
     pub fn new(kind: SignalKind) -> io::Result<Self> {
         let state = register_signal(kind)?;
         let last_seen = state.counter.load(Ordering::Acquire);
@@ -164,6 +180,7 @@ impl Signal {
 
     /// Returns the signal kind being listened to.
     #[inline]
+    #[must_use]
     pub fn kind(&self) -> SignalKind {
         self.kind
     }
@@ -172,6 +189,10 @@ impl Signal {
     ///
     /// This method returns a future that resolves when the signal is received.
     /// Multiple listeners for the same signal will all be woken on each signal.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying signal listener cannot be polled.
     pub async fn recv(&mut self) -> io::Result<()> {
         poll_fn(|cx| self.poll_recv(cx)).await
     }
@@ -197,6 +218,11 @@ impl Drop for Signal {
 /// Convenience builder for Unix signals.
 ///
 /// This is a wrapper around `Signal::new()` that provides a more ergonomic API.
+///
+/// # Errors
+///
+/// Returns an error if the signal handler cannot be installed or the signal
+/// listener cannot be registered.
 #[inline]
 pub fn signal(kind: SignalKind) -> io::Result<Signal> {
     Signal::new(kind)
@@ -212,6 +238,11 @@ pub struct CtrlC {
 
 impl CtrlC {
     /// Create a new Ctrl-C listener.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the `SIGINT` signal handler cannot be installed or
+    /// the signal listener cannot be registered.
     pub fn new() -> io::Result<Self> {
         Ok(Self {
             signal: Signal::new(SignalKind::interrupt())?,
@@ -232,6 +263,11 @@ impl Future for CtrlC {
 /// Cross-platform Ctrl-C support.
 ///
 /// Returns a future that resolves when Ctrl-C is received.
+///
+/// # Errors
+///
+/// Returns an error if the `SIGINT` signal handler cannot be installed or
+/// the signal listener cannot be registered.
 #[inline]
 pub fn ctrl_c() -> io::Result<CtrlC> {
     CtrlC::new()
@@ -241,9 +277,9 @@ fn register_waker(state: &SignalState, waker: &Waker) {
     let mut wakers = state
         .wakers
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(existing) = wakers.iter_mut().find(|existing| existing.will_wake(waker)) {
-        *existing = waker.clone();
+        existing.clone_from(waker);
     } else {
         wakers.push(waker.clone());
     }
@@ -254,7 +290,7 @@ fn register_signal(kind: SignalKind) -> io::Result<Arc<SignalState>> {
     let mut signals = registry
         .signals
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(entry) = signals.get_mut(&kind.0) {
         entry.refs += 1;
         return Ok(entry.state.clone());
@@ -279,19 +315,17 @@ fn register_signal(kind: SignalKind) -> io::Result<Arc<SignalState>> {
 }
 
 fn unregister_signal(kind: SignalKind) {
-    let registry = match registry() {
-        Ok(registry) => registry,
-        Err(_) => return,
+    let Ok(registry) = registry() else {
+        return;
     };
 
     let prev_action = {
         let mut signals = registry
             .signals
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let entry = match signals.get_mut(&kind.0) {
-            Some(entry) => entry,
-            None => return,
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(entry) = signals.get_mut(&kind.0) else {
+            return;
         };
 
         if entry.refs > 1 {
@@ -328,12 +362,12 @@ fn init_registry() -> io::Result<Arc<Registry>> {
 fn start_dispatch_thread(read_fd: RawFd, registry: Arc<Registry>) -> io::Result<()> {
     std::thread::Builder::new()
         .name("zincio-signal-dispatch".to_string())
-        .spawn(move || dispatch_loop(read_fd, registry))
+        .spawn(move || dispatch_loop(read_fd, &registry))
         .map_err(io::Error::other)?;
     Ok(())
 }
 
-fn dispatch_loop(read_fd: RawFd, registry: Arc<Registry>) {
+fn dispatch_loop(read_fd: RawFd, registry: &Arc<Registry>) {
     let mut buf = [0u8; 128];
     let mut pending = Vec::with_capacity(4);
     loop {
@@ -344,7 +378,6 @@ fn dispatch_loop(read_fd: RawFd, registry: Arc<Registry>) {
         if n < 0 {
             let err = io::Error::last_os_error();
             match err.kind() {
-                io::ErrorKind::Interrupted => continue,
                 io::ErrorKind::WouldBlock => {
                     std::thread::sleep(std::time::Duration::from_millis(10));
                     continue;
@@ -353,7 +386,7 @@ fn dispatch_loop(read_fd: RawFd, registry: Arc<Registry>) {
             }
         }
 
-        let n = n as usize;
+        let n = usize::try_from(n).unwrap();
         for byte in &buf[..n] {
             pending.push(*byte);
             if pending.len() == 4 {
@@ -361,7 +394,7 @@ fn dispatch_loop(read_fd: RawFd, registry: Arc<Registry>) {
                 raw.copy_from_slice(&pending);
                 pending.clear();
                 let signum = i32::from_ne_bytes(raw) as libc::c_int;
-                dispatch_signal(&registry, signum);
+                dispatch_signal(registry, signum);
             }
         }
     }
@@ -372,7 +405,7 @@ fn dispatch_signal(registry: &Registry, signum: libc::c_int) {
         let signals = registry
             .signals
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         signals.get(&signum).map(|entry| entry.state.clone())
     };
 
@@ -382,7 +415,7 @@ fn dispatch_signal(registry: &Registry, signum: libc::c_int) {
             let mut wakers = state
                 .wakers
                 .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             std::mem::take(&mut *wakers)
         };
         for waker in wakers {
@@ -407,10 +440,10 @@ unsafe fn install_handler(signum: libc::c_int) -> io::Result<libc::sigaction> {
     let mut action: libc::sigaction = std::mem::zeroed();
     action.sa_sigaction = signal_handler as extern "C" fn(libc::c_int) as usize;
     action.sa_flags = libc::SA_RESTART;
-    libc::sigemptyset(&mut action.sa_mask);
+    libc::sigemptyset(&raw mut action.sa_mask);
 
     let mut prev: libc::sigaction = std::mem::zeroed();
-    let rc = libc::sigaction(signum, &action, &mut prev);
+    let rc = libc::sigaction(signum, &raw const action, &raw mut prev);
     if rc == -1 {
         return Err(io::Error::last_os_error());
     }

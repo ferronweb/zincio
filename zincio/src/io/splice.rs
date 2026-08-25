@@ -29,6 +29,9 @@ use crate::{io::AsInnerRawHandle, op::SpliceOp};
 ///
 /// This function uses the kernel's `splice` system call to transfer data
 /// between file descriptors without copying to userspace.
+///
+/// # Errors
+/// Returns an error if the underlying `splice` operation fails.
 pub async fn splice<'a, 'b>(
     from: &'a impl AsRawFd,
     to: &'b impl AsInnerRawHandle<'b>,
@@ -46,6 +49,14 @@ pub async fn splice<'a, 'b>(
 ///
 /// This function calls `splice()` repeatedly until `len` bytes have been transferred
 /// or EOF is reached.
+///
+/// # Errors
+/// Returns an error if the underlying `splice` operation fails.
+///
+/// # Panics
+///
+/// Panics if the remaining number of bytes to transfer cannot be represented
+/// as `usize` on the target platform (only possible with an enormous `len`).
 pub async fn splice_exact<'a, 'b>(
     from: &'a impl AsRawFd,
     to: &'b impl AsInnerRawHandle<'b>,
@@ -53,7 +64,12 @@ pub async fn splice_exact<'a, 'b>(
 ) -> Result<u64, std::io::Error> {
     let mut total = 0;
     while total < len {
-        let n = splice(from, to, (len - total).min(usize::MAX as u64) as usize).await?;
+        let n = splice(
+            from,
+            to,
+            usize::try_from((len - total).min(usize::MAX as u64)).unwrap(),
+        )
+        .await?;
         if n == 0 {
             break;
         }

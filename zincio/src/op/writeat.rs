@@ -55,15 +55,12 @@ impl<B: IoBuf> Op for WriteAtOp<'_, B> {
         driver: &AnyDriver,
     ) -> Poll<io::Result<Self::Output>> {
         let result = if let Some(completion_token) = self.completion_token {
-            match driver.get_completion_result(completion_token) {
-                Some(result) => {
-                    self.completion_token = None;
-                    result
-                }
-                None => {
-                    driver.set_completion_waker(completion_token, cx.waker().clone());
-                    return Poll::Pending;
-                }
+            if let Some(result) = driver.get_completion_result(completion_token) {
+                self.completion_token = None;
+                result
+            } else {
+                driver.set_completion_waker(completion_token, cx.waker().clone());
+                return Poll::Pending;
             }
         } else {
             match driver.submit_completion(self, cx.waker().clone()) {
@@ -78,7 +75,7 @@ impl<B: IoBuf> Op for WriteAtOp<'_, B> {
         if result < 0 {
             return Poll::Ready(Err(io::Error::from_raw_os_error(-result)));
         }
-        let written = result as usize;
+        let written = usize::try_from(result).unwrap();
         Poll::Ready(Ok(written))
     }
 

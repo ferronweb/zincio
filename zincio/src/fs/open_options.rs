@@ -20,11 +20,87 @@ use crate::fd_inner::RawOsHandle;
 
 use crate::fs::file::File;
 
+const OPEN_READ: u8 = 1 << 0;
+const OPEN_WRITE: u8 = 1 << 1;
+const OPEN_APPEND: u8 = 1 << 2;
+const OPEN_TRUNCATE: u8 = 1 << 3;
+const OPEN_CREATE: u8 = 1 << 4;
+const OPEN_CREATE_NEW: u8 = 1 << 5;
+
+/// Internal grouping of the boolean open flags stored as a bitfield so the
+/// public `OpenOptions` struct does not carry more than three separate `bool`
+/// fields.
+#[derive(Clone, Debug, Default)]
+pub struct OpenOptionsFlags {
+    bits: u8,
+}
+
+impl OpenOptionsFlags {
+    #[inline]
+    fn read(&self) -> bool {
+        self.bits & OPEN_READ != 0
+    }
+    #[inline]
+    fn write(&self) -> bool {
+        self.bits & OPEN_WRITE != 0
+    }
+    #[inline]
+    fn append(&self) -> bool {
+        self.bits & OPEN_APPEND != 0
+    }
+    #[inline]
+    fn truncate(&self) -> bool {
+        self.bits & OPEN_TRUNCATE != 0
+    }
+    #[inline]
+    fn create(&self) -> bool {
+        self.bits & OPEN_CREATE != 0
+    }
+    #[inline]
+    fn create_new(&self) -> bool {
+        self.bits & OPEN_CREATE_NEW != 0
+    }
+
+    #[inline]
+    fn set(&mut self, flag: u8, value: bool) {
+        if value {
+            self.bits |= flag;
+        } else {
+            self.bits &= !flag;
+        }
+    }
+
+    #[inline]
+    fn set_read(&mut self, value: bool) {
+        self.set(OPEN_READ, value);
+    }
+    #[inline]
+    fn set_write(&mut self, value: bool) {
+        self.set(OPEN_WRITE, value);
+    }
+    #[inline]
+    fn set_append(&mut self, value: bool) {
+        self.set(OPEN_APPEND, value);
+    }
+    #[inline]
+    fn set_truncate(&mut self, value: bool) {
+        self.set(OPEN_TRUNCATE, value);
+    }
+    #[inline]
+    fn set_create(&mut self, value: bool) {
+        self.set(OPEN_CREATE, value);
+    }
+    #[inline]
+    fn set_create_new(&mut self, value: bool) {
+        self.set(OPEN_CREATE_NEW, value);
+    }
+}
+
 /// Options and flags for opening files.
 ///
 /// This struct provides a builder-style interface for configuring how a file
 /// should be opened, similar to [`std::fs::OpenOptions`]. It supports both
-/// io_uring completion-based opening on Linux and blocking thread pool fallback
+/// `io_uring` completion-based opening on Linux and blocking thread pool fallback
 /// for other platforms.
 ///
 /// # Examples
@@ -49,12 +125,7 @@ use crate::fs::file::File;
 /// ```
 #[derive(Clone, Debug)]
 pub struct OpenOptions {
-    read: bool,
-    write: bool,
-    append: bool,
-    truncate: bool,
-    create: bool,
-    create_new: bool,
+    flags: OpenOptionsFlags,
 }
 
 impl OpenOptions {
@@ -62,56 +133,52 @@ impl OpenOptions {
     ///
     /// By default, all options are set to `false`.
     #[inline]
+    #[must_use]
     pub fn new() -> Self {
         Self {
-            read: false,
-            write: false,
-            append: false,
-            truncate: false,
-            create: false,
-            create_new: false,
+            flags: OpenOptionsFlags::default(),
         }
     }
 
     /// Sets whether the file should be opened for reading.
     #[inline]
     pub fn read(&mut self, read: bool) -> &mut Self {
-        self.read = read;
+        self.flags.set_read(read);
         self
     }
 
     /// Sets whether the file should be opened for writing.
     #[inline]
     pub fn write(&mut self, write: bool) -> &mut Self {
-        self.write = write;
+        self.flags.set_write(write);
         self
     }
 
     /// Sets whether the file should be opened in append mode.
     #[inline]
     pub fn append(&mut self, append: bool) -> &mut Self {
-        self.append = append;
+        self.flags.set_append(append);
         self
     }
 
     /// Sets whether the file should be truncated if it already exists.
     #[inline]
     pub fn truncate(&mut self, truncate: bool) -> &mut Self {
-        self.truncate = truncate;
+        self.flags.set_truncate(truncate);
         self
     }
 
     /// Sets whether the file should be created if it does not exist.
     #[inline]
     pub fn create(&mut self, create: bool) -> &mut Self {
-        self.create = create;
+        self.flags.set_create(create);
         self
     }
 
     /// Sets whether the file should be created exclusively (fails if it already exists).
     #[inline]
     pub fn create_new(&mut self, create_new: bool) -> &mut Self {
-        self.create_new = create_new;
+        self.flags.set_create_new(create_new);
         self
     }
 
@@ -120,15 +187,15 @@ impl OpenOptions {
     /// This is an internal method used to ensure the options are valid.
     #[inline]
     fn validate(&self) -> io::Result<()> {
-        let writing = self.write || self.append;
+        let writing = self.flags.write() || self.flags.append();
 
-        if !self.read && !writing {
+        if !self.flags.read() && !writing {
             return Err(io::Error::new(
                 ErrorKind::InvalidInput,
                 "must enable read, write, or append access",
             ));
         }
-        if (self.truncate || self.create || self.create_new) && !writing {
+        if (self.flags.truncate() || self.flags.create() || self.flags.create_new()) && !writing {
             return Err(io::Error::new(
                 ErrorKind::InvalidInput,
                 "truncate/create options require write or append access",
@@ -143,7 +210,7 @@ impl OpenOptions {
     /// If append mode is enabled, the cursor is set to the end of the file.
     #[inline]
     fn initial_cursor_for_append(&self, file: &std::fs::File) -> io::Result<u64> {
-        if self.append {
+        if self.flags.append() {
             Ok(file.metadata()?.len())
         } else {
             Ok(0)
@@ -156,7 +223,7 @@ impl OpenOptions {
     ///
     /// # Platform-specific behavior
     ///
-    /// - On Linux with io_uring support, this uses the `openat` syscall directly.
+    /// - On Linux with `io_uring` support, this uses the `openat` syscall directly.
     /// - On other platforms, this either offloads to a blocking thread pool or falls back
     ///   to [`std::fs::OpenOptions::open`].
     ///
@@ -209,21 +276,21 @@ impl OpenOptions {
         };
 
         let cursor = self.initial_cursor_for_append(&std_file)?;
-        File::from_std_with_cursor(std_file, cursor)
+        Ok(File::from_std_with_cursor(std_file, cursor))
     }
 
     /// Opens a file in the blocking thread pool.
     ///
-    /// This is an internal method used when io_uring is not available.
+    /// This is an internal method used when `io_uring` is not available.
     #[inline]
     async fn open_in_blocking_pool(&self, path: &Path) -> io::Result<std::fs::File> {
         let path = path.to_path_buf();
-        let read = self.read;
-        let write = self.write;
-        let append = self.append;
-        let truncate = self.truncate;
-        let create = self.create;
-        let create_new = self.create_new;
+        let read = self.flags.read();
+        let write = self.flags.write();
+        let append = self.flags.append();
+        let truncate = self.flags.truncate();
+        let create = self.flags.create();
+        let create_new = self.flags.create_new();
 
         crate::spawn_blocking(move || {
             #[cfg(windows)]
@@ -249,7 +316,7 @@ impl OpenOptions {
 
     /// Opens a file synchronously.
     ///
-    /// This is an internal method used when io_uring is not available.
+    /// This is an internal method used when `io_uring` is not available.
     #[inline]
     fn open_blocking(&self, path: &Path) -> io::Result<std::fs::File> {
         #[cfg(windows)]
@@ -259,25 +326,25 @@ impl OpenOptions {
 
         let mut options = std::fs::OpenOptions::new();
         options
-            .read(self.read)
-            .write(self.write)
-            .append(self.append)
-            .truncate(self.truncate)
-            .create(self.create)
-            .create_new(self.create_new);
+            .read(self.flags.read())
+            .write(self.flags.write())
+            .append(self.flags.append())
+            .truncate(self.flags.truncate())
+            .create(self.flags.create())
+            .create_new(self.flags.create_new());
         #[cfg(windows)]
         options.attributes(FILE_FLAG_OVERLAPPED);
         options.open(path)
     }
 
-    /// Builds an `OpenOp` for use with io_uring.
+    /// Builds an `OpenOp` for use with `io_uring`.
     ///
-    /// This is an internal method used on Linux with io_uring support.
+    /// This is an internal method used on Linux with `io_uring` support.
     #[cfg(target_os = "linux")]
     #[inline]
     fn build_open_op(&self, path: &Path) -> io::Result<OpenOp> {
-        let writing = self.write || self.append;
-        let mut flags = match (self.read, writing) {
+        let writing = self.flags.write() || self.flags.append();
+        let mut flags = match (self.flags.read(), writing) {
             (true, false) => libc::O_RDONLY,
             (false, true) => libc::O_WRONLY,
             (true, true) => libc::O_RDWR,
@@ -289,15 +356,15 @@ impl OpenOptions {
             }
         };
 
-        if self.append {
+        if self.flags.append() {
             flags |= libc::O_APPEND;
         }
-        if self.truncate {
+        if self.flags.truncate() {
             flags |= libc::O_TRUNC;
         }
-        if self.create_new {
+        if self.flags.create_new() {
             flags |= libc::O_CREAT | libc::O_EXCL;
-        } else if self.create {
+        } else if self.flags.create() {
             flags |= libc::O_CREAT;
         }
         flags |= libc::O_CLOEXEC;

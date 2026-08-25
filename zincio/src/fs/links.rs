@@ -87,7 +87,7 @@ pub fn windows_symlink_file(path: String, target: String) -> std::io::Result<()>
 ///
 /// # Platform-specific behavior
 ///
-/// - On Linux with io_uring support, this uses the `linkat` syscall directly.
+/// - On Linux with `io_uring` support, this uses the `linkat` syscall directly.
 /// - On other platforms, this either offloads to a blocking thread pool or falls back
 ///   to [`std::fs::hard_link`].
 ///
@@ -98,6 +98,9 @@ pub fn windows_symlink_file(path: String, target: String) -> std::io::Result<()>
 /// - `dst` already exists
 /// - The source and destination are on different filesystems
 /// - The process lacks permissions
+///
+/// # Panics
+/// Panics if the I/O driver is in an invalid state.
 #[cfg(target_os = "linux")]
 pub async fn hard_link(
     src: impl AsRef<std::path::Path>,
@@ -111,13 +114,13 @@ pub async fn hard_link(
         let src_cstr = CString::new(src.as_os_str().as_encoded_bytes()).map_err(|e| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Invalid path: {}", e),
+                format!("Invalid path: {e}"),
             )
         })?;
         let dst_cstr = CString::new(dst.as_os_str().as_encoded_bytes()).map_err(|e| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Invalid path: {}", e),
+                format!("Invalid path: {e}"),
             )
         })?;
 
@@ -217,7 +220,7 @@ pub async fn symlink_dir(
 ///
 /// # Platform-specific behavior
 ///
-/// - On Linux with io_uring support, this uses the `symlinkat` syscall directly.
+/// - On Linux with `io_uring` support, this uses the `symlinkat` syscall directly.
 /// - On other Unix platforms, this either offloads to a blocking thread pool or falls back
 ///   to [`std::os::unix::fs::symlink`].
 ///
@@ -228,6 +231,9 @@ pub async fn symlink_dir(
 /// - `dst` already exists
 /// - The process lacks permissions to create the symlink
 /// - The platform does not support symbolic links
+///
+/// # Panics
+/// Panics if the I/O driver is in an invalid state.
 #[cfg(target_os = "linux")]
 pub async fn symlink_dir(
     src: impl AsRef<std::path::Path>,
@@ -242,13 +248,13 @@ pub async fn symlink_dir(
         let src_cstr = CString::new(src.as_os_str().as_encoded_bytes()).map_err(|e| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Invalid path: {}", e),
+                format!("Invalid path: {e}"),
             )
         })?;
         let dst_cstr = CString::new(dst.as_os_str().as_encoded_bytes()).map_err(|e| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Invalid path: {}", e),
+                format!("Invalid path: {e}"),
             )
         })?;
         let driver = driver.expect("invalid driver state");
@@ -347,7 +353,7 @@ pub async fn symlink_file(
 ///
 /// # Platform-specific behavior
 ///
-/// - On Linux with io_uring support, this uses the `symlinkat` syscall directly.
+/// - On Linux with `io_uring` support, this uses the `symlinkat` syscall directly.
 /// - On other Unix platforms, this either offloads to a blocking thread pool or falls back
 ///   to [`std::os::unix::fs::symlink`].
 ///
@@ -358,6 +364,9 @@ pub async fn symlink_file(
 /// - `dst` already exists
 /// - The process lacks permissions to create the symlink
 /// - The platform does not support symbolic links
+///
+/// # Panics
+/// Panics if the I/O driver is in an invalid state.
 #[cfg(target_os = "linux")]
 pub async fn symlink_file(
     src: impl AsRef<std::path::Path>,
@@ -372,13 +381,13 @@ pub async fn symlink_file(
         let src_cstr = CString::new(src.as_os_str().as_encoded_bytes()).map_err(|e| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Invalid path: {}", e),
+                format!("Invalid path: {e}"),
             )
         })?;
         let dst_cstr = CString::new(dst.as_os_str().as_encoded_bytes()).map_err(|e| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                format!("Invalid path: {}", e),
+                format!("Invalid path: {e}"),
             )
         })?;
         let driver = driver.expect("invalid driver state");
