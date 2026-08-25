@@ -32,6 +32,9 @@ impl Interruptor for UringInterruptor {
     fn interrupt(&self) {
         if let Some(eventfd) = self.eventfd.upgrade() {
             let value: u64 = 1;
+            // SAFETY:
+            // 1. eventfd is valid as long as async runtime isn't shut down
+            // 2. value pointer is correct and size matches
             let _ = unsafe {
                 libc::write(
                     *eventfd,
@@ -81,7 +84,8 @@ pub struct UringDriver {
 impl Drop for UringDriver {
     fn drop(&mut self) {
         if let Some(eventfd) = self.interrupt_eventfd.take() {
-            // Close eventfd
+            // SAFETY: The eventfd closure is done only one time, and the raw fd
+            //         isn't going to be used again.
             unsafe { libc::close(*eventfd) };
         }
     }
@@ -90,6 +94,7 @@ impl Drop for UringDriver {
 impl UringDriver {
     #[inline]
     pub(crate) fn new(entries: u32, builder: io_uring::Builder) -> Result<Self, io::Error> {
+        // SAFETY: eventfd initialization code, which takes no pointers nor fds
         let eventfd = unsafe { libc::eventfd(0, libc::EFD_NONBLOCK | libc::EFD_CLOEXEC) };
         if eventfd < 0 {
             return Err(io::Error::last_os_error());

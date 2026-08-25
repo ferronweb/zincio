@@ -97,6 +97,8 @@ impl Interruptor for IocpInterruptor {
     #[inline]
     fn interrupt(&self) {
         if let Some(port) = self.port.upgrade() {
+            // SAFETY: I/O completion port is valid as long as runtime isn't shut down
+            //         (then self.port couldn't be upgraded)
             let _ = unsafe {
                 PostQueuedCompletionStatus(
                     port.as_raw_handle() as HANDLE,
@@ -162,6 +164,7 @@ pub struct IocpDriver {
 impl IocpDriver {
     #[inline]
     pub(crate) fn new() -> Result<Self, io::Error> {
+        // SAFETY: code for creating IOCP, which doesn't take any pointer or handle/socket
         let port = unsafe {
             CreateIoCompletionPort(INVALID_HANDLE_VALUE as HANDLE, ptr::null_mut(), 0, 0)
         };
@@ -170,6 +173,8 @@ impl IocpDriver {
         }
 
         Ok(Self {
+            // SAFETY: this is a just-created IOCP handle and it's valid
+            //         (invalid handle would error out earlier)
             port: Arc::new(unsafe { OwnedHandle::from_raw_handle(port as RawHandle) }),
             afd: RefCell::new(None),
             state: RefCell::new(DriverState {
@@ -202,6 +207,7 @@ impl IocpDriver {
 
     #[inline]
     fn ntstatus_to_io_error(status: NTSTATUS) -> io::Error {
+        // SAFETY: NT status -> DOS error code, which takes no pointers nor I/O handles
         let mapped = unsafe { RtlNtStatusToDosError(status) } as i32;
         if mapped != 0 {
             io::Error::from_raw_os_error(mapped)
@@ -244,6 +250,7 @@ impl IocpDriver {
         }
 
         let ntstatus = entry.Internal as i32;
+        // SAFETY: NT status -> DOS error code, which takes no pointers nor I/O handles
         let win32_error = unsafe { RtlNtStatusToDosError(ntstatus) } as i32;
         let mapped_error = if win32_error == 0 {
             ntstatus
@@ -290,6 +297,7 @@ impl IocpDriver {
         };
 
         if result == SOCKET_ERROR {
+            // SAFETY: gets an error after just-done Winsock ioctl
             let err = unsafe { WinSock::WSAGetLastError() };
             return Err(io::Error::from_raw_os_error(err));
         }
@@ -341,6 +349,7 @@ impl IocpDriver {
 
         let mut afd_handle: HANDLE = ptr::null_mut();
         let mut create_status = IO_STATUS_BLOCK::default();
+        // SAFETY: pattern to get \Device\Afd handle similar to wepoll (?)
         let status = unsafe {
             NtCreateFile(
                 &mut afd_handle,
@@ -367,6 +376,7 @@ impl IocpDriver {
             ));
         }
 
+        // SAFETY: Afd handle is valid, and invalid handle would error out earlier
         Ok(unsafe { OwnedHandle::from_raw_handle(afd_handle as RawHandle) })
     }
 
@@ -384,6 +394,8 @@ impl IocpDriver {
             let afd = Self::open_afd_handle()?;
             let afd_handle = afd.as_raw_handle() as HANDLE;
 
+            // SAFETY: IOCP handle is valid and \Device\Afd one as well
+            //         (invalid would error out earlier)
             let completion_port = unsafe {
                 CreateIoCompletionPort(afd_handle, self.iocp_handle(), AFD_POLL_COMPLETION_KEY, 0)
             };
@@ -391,6 +403,7 @@ impl IocpDriver {
                 return Err(io::Error::last_os_error());
             }
 
+            // SAFETY: \Device\Afd handle is valid
             if unsafe {
                 SetFileCompletionNotificationModes(afd_handle, FILE_SKIP_SET_EVENT_ON_HANDLE)
             } == 0
@@ -446,6 +459,7 @@ impl IocpDriver {
                 }
             }
 
+            // SAFETY: AfdIoStatusCtx is to be initialized later on
             let mut io_status = Box::new(unsafe { std::mem::zeroed::<AfdIoStatusCtx>() });
             let mut input = Box::new(AfdPollInfo::new(socket, poll_events));
             let mut output = Box::new(AfdPollInfo::new(socket, 0));
@@ -524,6 +538,8 @@ impl IocpDriver {
         };
 
         let mut cancel_status = IO_STATUS_BLOCK::default();
+        // SAFETY: \Device\Afd handle is valid, and I/O status pointer is valid too
+        //         (if pointer is missing, it's returned early)
         let _ = unsafe { NtCancelIoFileEx(afd_handle, io_status_ptr, &mut cancel_status) };
     }
 
