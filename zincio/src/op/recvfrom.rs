@@ -68,7 +68,8 @@ fn sockaddr_storage_to_socketaddr(storage: &SOCKADDR_STORAGE) -> Result<SocketAd
         let ip = std::net::Ipv4Addr::from(ip_u32);
         Ok(SocketAddr::V4(std::net::SocketAddrV4::new(ip, port)))
     } else if family == AF_INET6 {
-        let addr_in6: &SOCKADDR_IN6 = unsafe { &*std::ptr::from_ref(storage).cast::<SOCKADDR_IN6>() };
+        let addr_in6: &SOCKADDR_IN6 =
+            unsafe { &*std::ptr::from_ref(storage).cast::<SOCKADDR_IN6>() };
         let port = u16::from_be(addr_in6.sin6_port);
         let ip = std::net::Ipv6Addr::from(unsafe { addr_in6.sin6_addr.u.Byte });
         Ok(SocketAddr::V6(std::net::SocketAddrV6::new(
@@ -323,11 +324,7 @@ impl<B: IoBufMut> Op for RecvfromOp<'_, B> {
             let address = self
                 .completion_state
                 .as_ref()
-                .ok_or_else(|| {
-                    io::Error::other(
-                        "recvfrom completion missing source address",
-                    )
-                })
+                .ok_or_else(|| io::Error::other("recvfrom completion missing source address"))
                 .and_then(|state| sockaddr_storage_to_socketaddr(&state.addr));
             let buf = self
                 .buf

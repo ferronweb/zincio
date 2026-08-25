@@ -130,7 +130,11 @@ mod tests {
             // Initialise baseline
             let _ = interval.tick().await;
             // Artificially push next_deadline into the past to simulate missed ticks
-            interval.next_deadline = Some(Instant::now().checked_sub(Duration::from_millis(10)).unwrap());
+            interval.next_deadline = Some(
+                Instant::now()
+                    .checked_sub(Duration::from_millis(10))
+                    .unwrap(),
+            );
             let missed = interval.tick().await;
             assert!(missed >= 1);
         });

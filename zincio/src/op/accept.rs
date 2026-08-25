@@ -90,7 +90,8 @@ fn sockaddr_storage_to_socketaddr(storage: &SOCKADDR_STORAGE) -> Result<SocketAd
         let ip = std::net::Ipv4Addr::from(ip_u32);
         Ok(SocketAddr::V4(std::net::SocketAddrV4::new(ip, port)))
     } else if family == AF_INET6 {
-        let addr_in6: &SOCKADDR_IN6 = unsafe { &*std::ptr::from_ref(storage).cast::<SOCKADDR_IN6>() };
+        let addr_in6: &SOCKADDR_IN6 =
+            unsafe { &*std::ptr::from_ref(storage).cast::<SOCKADDR_IN6>() };
         let port = u16::from_be(addr_in6.sin6_port);
         let ip = std::net::Ipv6Addr::from(unsafe { addr_in6.sin6_addr.u.Byte });
         Ok(SocketAddr::V6(std::net::SocketAddrV6::new(
@@ -601,8 +602,6 @@ fn poll_completion_windows(
     op: &mut AcceptOp<'_>,
     _result: i32,
 ) -> Poll<io::Result<(RawOsHandle, SocketAddr)>> {
-    
-
     let RawOsHandle::Socket(listener_socket) = op.handle.handle else {
         return Poll::Ready(Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -662,9 +661,7 @@ fn poll_completion_windows(
     };
 
     if remote_sockaddr.is_null() {
-        return Poll::Ready(Err(io::Error::other(
-            "can't obtain remote socket address",
-        )));
+        return Poll::Ready(Err(io::Error::other("can't obtain remote socket address")));
     }
 
     let address = match sockaddr_storage_to_socketaddr(

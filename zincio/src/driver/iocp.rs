@@ -369,9 +369,7 @@ impl IocpDriver {
             return Err(Self::ntstatus_to_io_error(status));
         }
         if afd_handle.is_null() {
-            return Err(io::Error::other(
-                "NtCreateFile returned a null AFD handle",
-            ));
+            return Err(io::Error::other("NtCreateFile returned a null AFD handle"));
         }
 
         // SAFETY: Afd handle is valid, and invalid handle would error out earlier
