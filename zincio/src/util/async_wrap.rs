@@ -241,6 +241,7 @@ impl<T> Unpin for AsyncWrap<T> {}
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
     use std::io;
     use std::pin::Pin;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -273,10 +274,13 @@ mod tests {
     }
 
     impl AsyncRead for CountingReader {
-        async fn read<B: IoBufMut>(&mut self, mut buf: B) -> (Result<usize, io::Error>, B) {
+        fn read<B: IoBufMut>(
+            &mut self,
+            mut buf: B,
+        ) -> impl Future<Output = (Result<usize, io::Error>, B)> {
             self.reads.fetch_add(1, Ordering::SeqCst);
             if self.offset >= self.data.len() {
-                return (Ok(0), buf);
+                return std::future::ready((Ok(0), buf));
             }
 
             let remaining = self.data.len() - self.offset;
@@ -290,7 +294,7 @@ mod tests {
             }
 
             self.offset += read_len;
-            (Ok(read_len), buf)
+            std::future::ready((Ok(read_len), buf))
         }
     }
 
@@ -312,10 +316,13 @@ mod tests {
     }
 
     impl AsyncWrite for ChunkedWriter {
-        async fn write<B: IoBuf>(&mut self, buf: B) -> (Result<usize, io::Error>, B) {
+        fn write<B: IoBuf>(
+            &mut self,
+            buf: B,
+        ) -> impl Future<Output = (Result<usize, io::Error>, B)> {
             let len = buf.buf_len();
             if len == 0 {
-                return (Ok(0), buf);
+                return std::future::ready((Ok(0), buf));
             }
 
             let write_len = len.min(self.chunk_size.max(1));
@@ -325,13 +332,13 @@ mod tests {
             guard.writes += 1;
             guard.data.extend_from_slice(slice);
 
-            (Ok(write_len), buf)
+            std::future::ready((Ok(write_len), buf))
         }
 
-        async fn flush(&mut self) -> Result<(), io::Error> {
+        fn flush(&mut self) -> impl Future<Output = Result<(), io::Error>> {
             let mut guard = self.state.lock().expect("lock writer state");
             guard.flushed = true;
-            Ok(())
+            std::future::ready(Ok(()))
         }
     }
 
@@ -345,12 +352,15 @@ mod tests {
     }
 
     impl AsyncWrite for PendingIo {
-        async fn write<B: IoBuf>(&mut self, buf: B) -> (Result<usize, io::Error>, B) {
-            (Ok(0), buf)
+        fn write<B: IoBuf>(
+            &mut self,
+            buf: B,
+        ) -> impl Future<Output = (Result<usize, io::Error>, B)> {
+            std::future::ready((Ok(0), buf))
         }
 
-        async fn flush(&mut self) -> Result<(), io::Error> {
-            Ok(())
+        fn flush(&mut self) -> impl Future<Output = Result<(), io::Error>> {
+            std::future::ready(Ok(()))
         }
     }
 
