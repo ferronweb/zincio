@@ -265,11 +265,6 @@ impl AsyncWrite for Pipe {
     }
 
     #[inline]
-    fn flush(&mut self) -> impl std::future::Future<Output = Result<(), io::Error>> + '_ {
-        std::future::ready(Ok(()))
-    }
-
-    #[inline]
     async fn write_vectored<B: IoVectoredBuf>(&mut self, bufs: B) -> (Result<usize, io::Error>, B) {
         if bufs.is_empty() {
             return (Ok(0), bufs);

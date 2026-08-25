@@ -724,11 +724,6 @@ impl AsyncWrite for File {
         }
         (written, buf)
     }
-
-    #[inline]
-    fn flush(&mut self) -> impl std::future::Future<Output = Result<(), io::Error>> + '_ {
-        std::future::ready(Ok(()))
-    }
 }
 
 impl Drop for File {

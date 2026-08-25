@@ -54,7 +54,7 @@ fn socket_addr_to_raw(path: &Path) -> Result<(libc::sockaddr_un, libc::socklen_t
     }
 
     let mut sockaddr = unsafe { MaybeUninit::<libc::sockaddr_un>::zeroed().assume_init() };
-    sockaddr.sun_family = libc::sa_family_t::try_from(libc::AF_UNIX).unwrap();
+    sockaddr.sun_family = libc::sa_family_t::try_from(libc::AF_UNIX).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "integer conversion out of range"))?;
 
     let max_path_len = sockaddr.sun_path.len();
     if bytes.len() >= max_path_len {
@@ -65,11 +65,11 @@ fn socket_addr_to_raw(path: &Path) -> Result<(libc::sockaddr_un, libc::socklen_t
     }
 
     for (index, byte) in bytes.iter().copied().enumerate() {
-        sockaddr.sun_path[index] = i8::try_from(byte).unwrap();
+        sockaddr.sun_path[index] = i8::try_from(byte).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "integer conversion out of range"))?;
     }
 
     let addr_len =
-        u32::try_from(std::mem::offset_of!(libc::sockaddr_un, sun_path) + bytes.len() + 1).unwrap();
+        u32::try_from(std::mem::offset_of!(libc::sockaddr_un, sun_path) + bytes.len() + 1).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "integer conversion out of range"))?;
     #[cfg(any(
         target_os = "macos",
         target_os = "ios",
@@ -554,11 +554,6 @@ impl AsyncWrite for UnixStream {
         let mut op = WriteOp::new(handle, buf);
         let result = poll_fn(|cx| handle.poll_op(cx, &mut op)).await;
         (result, op.take_bufs())
-    }
-
-    #[inline]
-    fn flush(&mut self) -> impl std::future::Future<Output = Result<(), io::Error>> + '_ {
-        std::future::ready(Ok(()))
     }
 
     #[inline]

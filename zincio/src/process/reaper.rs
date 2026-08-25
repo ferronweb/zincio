@@ -172,7 +172,7 @@ fn pidfd_available() -> bool {
     let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, libc::getpid(), 0 as libc::c_uint) };
     if fd >= 0 {
         unsafe {
-            libc::close(i32::try_from(fd).unwrap());
+            libc::close(i32::try_from(fd).expect("fd fits in i32"));
         }
         true
     } else {

@@ -50,7 +50,7 @@ fn socket_addr_to_raw(
     match address {
         SocketAddr::V4(address) => {
             let sockaddr = libc::sockaddr_in {
-                sin_family: libc::sa_family_t::try_from(libc::AF_INET).unwrap(),
+                sin_family: libc::sa_family_t::try_from(libc::AF_INET).expect("AF_INET fits in sa_family_t"),
                 sin_port: address.port().to_be(),
                 sin_addr: libc::in_addr {
                     s_addr: u32::from_ne_bytes(address.ip().octets()),
@@ -79,13 +79,13 @@ fn socket_addr_to_raw(
                 (
                     libc::AF_INET,
                     storage.assume_init(),
-                    u32::try_from(std::mem::size_of::<libc::sockaddr_in>()).unwrap(),
+                    u32::try_from(std::mem::size_of::<libc::sockaddr_in>()).expect("sockaddr_in size fits in u32"),
                 )
             }
         }
         SocketAddr::V6(address) => {
             let sockaddr = libc::sockaddr_in6 {
-                sin6_family: libc::sa_family_t::try_from(libc::AF_INET6).unwrap(),
+                sin6_family: libc::sa_family_t::try_from(libc::AF_INET6).expect("AF_INET6 fits in sa_family_t"),
                 sin6_port: address.port().to_be(),
                 sin6_flowinfo: address.flowinfo(),
                 sin6_addr: libc::in6_addr {
@@ -115,7 +115,7 @@ fn socket_addr_to_raw(
                 (
                     libc::AF_INET6,
                     storage.assume_init(),
-                    u32::try_from(std::mem::size_of::<libc::sockaddr_in6>()).unwrap(),
+                    u32::try_from(std::mem::size_of::<libc::sockaddr_in6>()).expect("sockaddr_in6 size fits in u32"),
                 )
             }
         }
@@ -746,11 +746,6 @@ impl AsyncWrite for TcpStream {
         let mut op = WriteOp::new(handle, buf);
         let result = poll_fn(|cx| handle.poll_op(cx, &mut op)).await;
         (result, op.take_bufs())
-    }
-
-    #[inline]
-    fn flush(&mut self) -> impl std::future::Future<Output = Result<(), io::Error>> + '_ {
-        std::future::ready(Ok(()))
     }
 
     #[inline]

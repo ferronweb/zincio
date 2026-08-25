@@ -334,9 +334,9 @@ impl UringDriver {
                 let waiter = match state.registrations.get_mut(token.0) {
                     Some(HandleRegistration::Poll(registration)) => {
                         let write =
-                            i16::try_from(registration.poll_mask).unwrap() & libc::POLLOUT != 0;
+                            i16::try_from(registration.poll_mask).expect("poll_mask fits in i16") & libc::POLLOUT != 0;
                         let read =
-                            i16::try_from(registration.poll_mask).unwrap() & libc::POLLIN != 0;
+                            i16::try_from(registration.poll_mask).expect("poll_mask fits in i16") & libc::POLLIN != 0;
                         if write {
                             registration.poll_write_armed = false;
                             if read {
@@ -391,7 +391,7 @@ impl UringDriver {
                     .as_ref(),
             ),
             buffer.as_mut_ptr(),
-            u32::try_from(buffer.len()).unwrap(),
+            u32::try_from(buffer.len()).expect("buffer length fits in u32"),
         )
         .build()
         .user_data(u64::MAX);
@@ -590,8 +590,8 @@ impl Driver for UringDriver {
                 if let Some(HandleRegistration::Poll(registration)) =
                     state.registrations.get_mut(token.0)
                 {
-                    let write = i16::try_from(registration.poll_mask).unwrap() & libc::POLLOUT != 0;
-                    let read = i16::try_from(registration.poll_mask).unwrap() & libc::POLLIN != 0;
+                    let write = i16::try_from(registration.poll_mask).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "integer conversion out of range"))? & libc::POLLOUT != 0;
+                    let read = i16::try_from(registration.poll_mask).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "integer conversion out of range"))? & libc::POLLIN != 0;
                     if write {
                         registration.poll_write_armed = false;
                         registration.waiter_write = None;

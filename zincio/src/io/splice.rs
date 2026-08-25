@@ -67,7 +67,7 @@ pub async fn splice_exact<'a, 'b>(
         let n = splice(
             from,
             to,
-            usize::try_from((len - total).min(usize::MAX as u64)).unwrap(),
+            usize::try_from((len - total).min(usize::MAX as u64)).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "integer conversion out of range"))?,
         )
         .await?;
         if n == 0 {

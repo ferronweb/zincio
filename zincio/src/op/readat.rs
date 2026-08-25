@@ -75,7 +75,7 @@ impl<B: IoBufMut> Op for ReadAtOp<'_, B> {
         if result < 0 {
             return Poll::Ready(Err(io::Error::from_raw_os_error(-result)));
         }
-        let read = usize::try_from(result).unwrap();
+        let read = usize::try_from(result).expect("bytes read fits in usize");
         let buf = self
             .buf
             .as_mut()

@@ -115,7 +115,7 @@ impl<B: IoBuf> Op for WriteOp<'_, B> {
             if written == -1 {
                 Err(io::Error::last_os_error())
             } else {
-                Ok(usize::try_from(written).unwrap())
+                Ok(usize::try_from(written).expect("bytes written fits in usize"))
             }
         };
 
@@ -168,7 +168,7 @@ impl<B: IoBuf> Op for WriteOp<'_, B> {
         if result < 0 {
             return Poll::Ready(Err(io::Error::from_raw_os_error(-result)));
         }
-        Poll::Ready(Ok(usize::try_from(result).unwrap()))
+        Poll::Ready(Ok(usize::try_from(result).expect("bytes written fits in usize")))
     }
 
     #[cfg(windows)]
@@ -268,7 +268,7 @@ impl<B: IoBuf> Op for WriteOp<'_, B> {
         let entry = opcode::Write::new(
             types::Fd(self.handle.handle),
             buf.as_buf_ptr(),
-            u32::try_from(buf.buf_len()).unwrap(),
+            u32::try_from(buf.buf_len()).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "integer conversion out of range"))?,
         )
         .build()
         .user_data(user_data);

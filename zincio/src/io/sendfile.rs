@@ -40,7 +40,7 @@ async fn sendfile_exact_completion<'a, 'b>(
     let mut file_eof = false;
     while (total_from_file < len && !file_eof) || total_to_socket < total_from_file {
         let splice_from_file_len =
-            usize::try_from((len - total_from_file).min(usize::MAX as u64)).unwrap();
+            usize::try_from((len - total_from_file).min(usize::MAX as u64)).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "integer conversion out of range"))?;
         if !file_eof && splice_from_file_len > 0 {
             let n = splice(from, &pipe_writer_handle, splice_from_file_len).await?;
             if n == 0 {
@@ -51,7 +51,7 @@ async fn sendfile_exact_completion<'a, 'b>(
         }
 
         let splice_to_socket_len =
-            usize::try_from((total_from_file - total_to_socket).min(usize::MAX as u64)).unwrap();
+            usize::try_from((total_from_file - total_to_socket).min(usize::MAX as u64)).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "integer conversion out of range"))?;
         if splice_to_socket_len > 0 {
             let n = splice(&pipe_reader, to, splice_to_socket_len).await?;
             if n == 0 {
@@ -74,7 +74,7 @@ async fn sendfile_exact_poll<'a, 'b>(
 ) -> Result<u64, std::io::Error> {
     let mut total = 0;
     while total < len {
-        let len_to_copy = usize::try_from((len - total).min(usize::MAX as u64)).unwrap();
+        let len_to_copy = usize::try_from((len - total).min(usize::MAX as u64)).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "integer conversion out of range"))?;
         let n = {
             let from_handle = unsafe { BorrowedFd::borrow_raw(from.as_raw_fd()) };
             let to_handle = to.as_inner_raw_handle();

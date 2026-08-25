@@ -216,7 +216,7 @@ impl<'a> ConnectOp<'a> {
     #[inline]
     fn connect_poll_unix(&self, driver: &AnyDriver, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         let mut socket_error: libc::c_int = 0;
-        let mut socket_error_len = u32::try_from(mem::size_of::<libc::c_int>()).unwrap();
+        let mut socket_error_len = u32::try_from(mem::size_of::<libc::c_int>()).expect("c_int size fits in u32");
         let getsockopt_result = unsafe {
             libc::getsockopt(
                 self.handle.handle,
@@ -255,7 +255,7 @@ impl<'a> ConnectOp<'a> {
         }
 
         let mut peer = MaybeUninit::<libc::sockaddr_storage>::zeroed();
-        let mut peer_len = u32::try_from(mem::size_of::<libc::sockaddr_storage>()).unwrap();
+        let mut peer_len = u32::try_from(mem::size_of::<libc::sockaddr_storage>()).expect("sockaddr_storage size fits in u32");
         let getpeername_result = unsafe {
             libc::getpeername(
                 self.handle.handle,

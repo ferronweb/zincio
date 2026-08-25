@@ -386,7 +386,7 @@ fn dispatch_loop(read_fd: RawFd, registry: &Arc<Registry>) {
             }
         }
 
-        let n = usize::try_from(n).unwrap();
+        let n = usize::try_from(n).expect("signal count fits in usize");
         for byte in &buf[..n] {
             pending.push(*byte);
             if pending.len() == 4 {

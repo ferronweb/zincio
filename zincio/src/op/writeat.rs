@@ -75,7 +75,7 @@ impl<B: IoBuf> Op for WriteAtOp<'_, B> {
         if result < 0 {
             return Poll::Ready(Err(io::Error::from_raw_os_error(-result)));
         }
-        let written = usize::try_from(result).unwrap();
+        let written = usize::try_from(result).expect("bytes written fits in usize");
         Poll::Ready(Ok(written))
     }
 

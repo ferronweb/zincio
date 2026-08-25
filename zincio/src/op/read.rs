@@ -116,7 +116,7 @@ impl<B: IoBufMut> Op for ReadOp<'_, B> {
             if read == -1 {
                 Err(io::Error::last_os_error())
             } else {
-                Ok(usize::try_from(read).unwrap())
+                Ok(usize::try_from(read).expect("bytes read fits in usize"))
             }
         };
 
@@ -184,7 +184,7 @@ impl<B: IoBufMut> Op for ReadOp<'_, B> {
             }
             return Poll::Ready(Err(io::Error::from_raw_os_error(-result)));
         }
-        let read = usize::try_from(result).unwrap();
+        let read = usize::try_from(result).expect("bytes read fits in usize");
         let buf = self
             .buf
             .as_mut()
@@ -292,7 +292,7 @@ impl<B: IoBufMut> Op for ReadOp<'_, B> {
         let entry = opcode::Read::new(
             types::Fd(self.handle.handle),
             buf.as_buf_mut_ptr(),
-            u32::try_from(buf.buf_capacity()).unwrap(),
+            u32::try_from(buf.buf_capacity()).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "integer conversion out of range"))?,
         )
         .build()
         .user_data(user_data);
