@@ -48,6 +48,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn unix_listener_and_stream_exchange_data() {
         let runtime = crate::executor::Runtime::new(
@@ -108,6 +109,7 @@ mod tests {
         });
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn poll_unix_stream_uses_readiness_path() {
         let runtime = crate::executor::Runtime::new(

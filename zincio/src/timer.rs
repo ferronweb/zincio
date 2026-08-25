@@ -392,19 +392,29 @@ mod tests {
 
     fn mock_waker(counter: Arc<Mutex<u32>>) -> Waker {
         fn clone(data: *const ()) -> RawWaker {
-            RawWaker::new(data, &VTABLE)
+            let arc = unsafe { Arc::from_raw(data as *const Mutex<u32>) };
+            let cloned = Arc::clone(&arc);
+            std::mem::forget(arc);
+            RawWaker::new(Arc::into_raw(cloned) as *const (), &VTABLE)
         }
         fn wake(data: *const ()) {
+            let arc = unsafe { Arc::from_raw(data as *const Mutex<u32>) };
+            {
+                let mut lock = arc.lock().unwrap();
+                *lock += 1;
+            }
+            // wake consumes the waker, so drop the Arc here (do not forget)
+        }
+        fn wake_by_ref(data: *const ()) {
             let counter = unsafe { &*(data as *const Mutex<u32>) };
             let mut lock = counter.lock().unwrap();
             *lock += 1;
         }
-        fn wake_by_ref(data: *const ()) {
-            wake(data)
+        fn drop_waker(data: *const ()) {
+            unsafe { std::mem::drop(Arc::from_raw(data as *const Mutex<u32>)) };
         }
-        fn drop(_: *const ()) {}
 
-        static VTABLE: RawWakerVTable = RawWakerVTable::new(clone, wake, wake_by_ref, drop);
+        static VTABLE: RawWakerVTable = RawWakerVTable::new(clone, wake, wake_by_ref, drop_waker);
 
         let ptr = Arc::into_raw(counter) as *const ();
         unsafe { Waker::from_raw(RawWaker::new(ptr, &VTABLE)) }

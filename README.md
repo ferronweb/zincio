@@ -80,6 +80,40 @@ The following features are available (most are enabled by default):
 - `splice` - enables splice support (Linux).
 - `blocking-default` - enables the default blocking thread pool.
 
+## Miri (unsafe checking)
+
+`zincio` contains `unsafe` code in the I/O drivers (`io_uring`, `mio`, `IOCP`, `libc`).
+[Miri](https://github.com/rust-lang/miri) can validate the core memory safety
+without exercising kernel I/O. Only the `MockDriver` plus timer/executor
+logic is fully Miri-compatible; real drivers need kernel syscalls that Miri
+does not emulate.
+
+Setup (nightly required):
+
+```sh
+rustup toolchain install nightly --component miri
+cargo miri setup
+```
+
+Run the Miri-compatible subset (35 tests, 25 `#[cfg_attr(miri, ignore)]`):
+
+```sh
+MIRIFLAGS="-Zmiri-disable-isolation" cargo miri test -p zincio --lib --verbose
+```
+
+Notes:
+
+- `-Zmiri-disable-isolation` is required for `TCP`/`mio` socket syscalls
+  (`socket`, `epoll_wait`). Without it those tests fail with
+  “`socket` not available when isolation is enabled”.
+- `io_uring` (`io_uring_setup` syscall 425), `AF_UNIX`/`SOCK_DGRAM`,
+  `fs` blocking-pool, `process`, `signal` (`sigemptyset`), and
+  `spawn_blocking` (`rusty_pool` park) are unsupported and marked
+  `#[cfg_attr(miri, ignore)]`. The suite still covers the timing wheel,
+  executor, `MockDriver`, `MioDriver` (interrupt/wake), and TCP
+  readiness paths — the parts that exercise the crate's `unsafe`.
+- A CI job (`.github/workflows/miri.yml`) runs this command on `nightly`.
+
 ## License
 
 [MIT](./LICENSE)

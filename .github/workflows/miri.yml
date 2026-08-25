@@ -1,0 +1,38 @@
+name: Miri
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  miri:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install nightly + Miri
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+          components: miri
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Miri needs a pre-built std with checks
+      - name: Setup Miri
+        run: cargo miri setup
+
+      - name: Run Miri (zincio)
+        # -Zmiri-disable-isolation is required for tcp/mio socket syscalls
+        # (epoll, socket) that Miri otherwise blocks. Tests that need
+        # io_uring (syscall 425), unix sockets, udp, fs blocking-pool etc.
+        # are marked #[cfg_attr(miri, ignore)] so the remaining 35 tests
+        # exercise the core unsafe logic (executor, timer, MockDriver).
+        run: MIRIFLAGS="-Zmiri-disable-isolation" cargo miri test -p zincio --lib --verbose
+        timeout-minutes: 20

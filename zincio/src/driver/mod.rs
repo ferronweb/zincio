@@ -475,6 +475,7 @@ mod tests {
     }
 
     #[cfg(target_os = "linux")]
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_uring_driver_interrupt_basic() {
         let driver = AnyDriver::new_uring().expect("Failed to create UringDriver");
@@ -510,6 +511,7 @@ mod tests {
     }
 
     #[cfg(unix)]
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_interrupt_mio() {
         let runtime = crate::executor::Runtime::new(
@@ -534,6 +536,7 @@ mod tests {
     }
 
     #[cfg(target_os = "linux")]
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_interruptor_uring() {
         let runtime = crate::executor::Runtime::new(
@@ -558,6 +561,7 @@ mod tests {
     }
 
     #[cfg(windows)]
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_interrupt_iocp() {
         let runtime = crate::executor::Runtime::new(

@@ -772,6 +772,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn udp_send_recv_and_peek_variants_work() {
         let runtime = crate::executor::Runtime::new(
@@ -842,6 +843,7 @@ mod tests {
         });
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn poll_udp_send_recv_and_peek_variants_work() {
         let runtime = crate::executor::Runtime::new(
@@ -920,6 +922,7 @@ mod tests {
         });
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn poll_udp_into_poll_roundtrip() {
         let runtime = crate::executor::Runtime::new(

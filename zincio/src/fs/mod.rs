@@ -67,6 +67,7 @@ mod tests {
         std::env::temp_dir().join(format!("zincio_{name}_{now}.tmp"))
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn fs_read_write_helpers_work() {
         let runtime = Runtime::new(AnyDriver::new_mock());
@@ -88,6 +89,7 @@ mod tests {
         });
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn file_read_at_and_write_exact_at_work() {
         let runtime = Runtime::new(AnyDriver::new_mock());
@@ -116,6 +118,7 @@ mod tests {
         });
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn metadata_basic_properties() {
         let runtime = Runtime::new(AnyDriver::new_mock());
@@ -135,6 +138,7 @@ mod tests {
         });
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn metadata_directory() {
         let runtime = Runtime::new(AnyDriver::new_mock());
@@ -150,6 +154,7 @@ mod tests {
         });
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn metadata_timestamps() {
         let runtime = Runtime::new(AnyDriver::new_mock());
@@ -174,6 +179,7 @@ mod tests {
         });
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn metadata_permissions() {
         let runtime = Runtime::new(AnyDriver::new_mock());
@@ -191,6 +197,7 @@ mod tests {
         });
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn metadata_file_type() {
         let runtime = Runtime::new(AnyDriver::new_mock());
@@ -209,6 +216,7 @@ mod tests {
         });
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn metadata_empty_file() {
         let runtime = Runtime::new(AnyDriver::new_mock());
@@ -230,6 +238,7 @@ mod tests {
         });
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn create_dir_works() {
         let runtime = Runtime::new(AnyDriver::new_mock());
@@ -248,6 +257,7 @@ mod tests {
         });
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn create_dir_all_works() {
         let runtime = Runtime::new(AnyDriver::new_mock());
@@ -276,6 +286,7 @@ mod tests {
     }
 
     #[cfg(unix)]
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn symlink_metadata_works() {
         let runtime = Runtime::new(AnyDriver::new_mock());
@@ -311,6 +322,7 @@ mod tests {
         });
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn symlink_metadata_on_regular_file() {
         let runtime = Runtime::new(AnyDriver::new_mock());

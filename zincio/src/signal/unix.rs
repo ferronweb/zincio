@@ -516,6 +516,7 @@ mod tests {
         });
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn signal_recv_unblocks() {
         let rt = crate::executor::Runtime::new(AnyDriver::new_mock());
@@ -527,6 +528,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn ctrl_c_unblocks_on_sigint() {
         let rt = crate::executor::Runtime::new(AnyDriver::new_mock());

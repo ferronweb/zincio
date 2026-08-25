@@ -172,6 +172,7 @@ mod vectored_uring_tests {
     use crate::op::{ReadvOp, WritevOp};
     use crate::{driver::AnyDriver, fd_inner::InnerRawHandle};
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn io_uring_vectored_read_write_pipe() {
         // Create a runtime with an io_uring driver and run the test inside it so

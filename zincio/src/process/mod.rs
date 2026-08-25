@@ -1020,6 +1020,7 @@ mod tests {
             .to_string())
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn command_spawn_stdio_roundtrip() {
         make_runtime().block_on(async {

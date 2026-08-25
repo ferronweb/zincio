@@ -142,6 +142,7 @@ mod tests {
         fut.await
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn ctrl_c_unblocks_on_handler() {
         let rt = crate::executor::Runtime::new(AnyDriver::new_mock());

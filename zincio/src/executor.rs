@@ -890,6 +890,7 @@ mod tests {
     }
 
     #[cfg(feature = "blocking-default")]
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn spawn_blocking_returns_task_output() {
         let runtime = crate::executor::Runtime::new(AnyDriver::new_mock());
