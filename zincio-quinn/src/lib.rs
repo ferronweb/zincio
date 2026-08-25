@@ -87,7 +87,6 @@ impl Runtime for ZincioRuntime {
 
     #[inline]
     fn spawn(&self, future: Pin<Box<dyn Future<Output = ()> + Send>>) {
-        let future: Pin<Box<dyn Future<Output = ()>>> = unsafe { std::mem::transmute(future) };
         zincio::spawn(future);
     }
 
