@@ -196,7 +196,7 @@ where
             });
             this.write_fut = Some(fut);
         }
-        let write_fut = this.write_fut.as_mut().expect("read_fut is None");
+        let write_fut = this.write_fut.as_mut().expect("write_fut is None");
         let (written, inner) = futures_util::ready!(write_fut.poll_unpin(cx));
         this.write_fut = None;
         this.inner = Some(inner);
@@ -219,7 +219,7 @@ where
             });
             this.flush_fut = Some(fut);
         }
-        let flush_fut = this.flush_fut.as_mut().expect("read_fut is None");
+        let flush_fut = this.flush_fut.as_mut().expect("flush_fut is None");
         let (flush, inner) = futures_util::ready!(flush_fut.poll_unpin(cx));
         this.flush_fut = None;
         this.inner = Some(inner);
