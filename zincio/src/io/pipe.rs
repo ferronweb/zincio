@@ -265,8 +265,8 @@ impl AsyncWrite for Pipe {
     }
 
     #[inline]
-    async fn flush(&mut self) -> Result<(), io::Error> {
-        Ok(())
+    fn flush(&mut self) -> impl std::future::Future<Output = Result<(), io::Error>> + '_ {
+        std::future::ready(Ok(()))
     }
 
     #[inline]
