@@ -54,7 +54,7 @@ fn socket_addr_to_raw(path: &Path) -> Result<(libc::sockaddr_un, libc::socklen_t
     }
 
     let mut sockaddr = unsafe { MaybeUninit::<libc::sockaddr_un>::zeroed().assume_init() };
-    sockaddr.sun_family = u16::try_from(libc::AF_UNIX).unwrap();
+    sockaddr.sun_family = libc::sa_family_t::try_from(libc::AF_UNIX).unwrap();
 
     let max_path_len = sockaddr.sun_path.len();
     if bytes.len() >= max_path_len {

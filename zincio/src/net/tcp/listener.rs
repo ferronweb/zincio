@@ -36,7 +36,7 @@ fn socket_addr_to_raw(
     match address {
         SocketAddr::V4(address) => {
             let sockaddr = libc::sockaddr_in {
-                sin_family: u16::try_from(libc::AF_INET).unwrap(),
+                sin_family: libc::sa_family_t::try_from(libc::AF_INET).unwrap(),
                 sin_port: address.port().to_be(),
                 sin_addr: libc::in_addr {
                     s_addr: u32::from_ne_bytes(address.ip().octets()),
@@ -71,7 +71,7 @@ fn socket_addr_to_raw(
         }
         SocketAddr::V6(address) => {
             let sockaddr = libc::sockaddr_in6 {
-                sin6_family: u16::try_from(libc::AF_INET6).unwrap(),
+                sin6_family: libc::sa_family_t::try_from(libc::AF_INET6).unwrap(),
                 sin6_port: address.port().to_be(),
                 sin6_flowinfo: address.flowinfo(),
                 sin6_addr: libc::in6_addr {

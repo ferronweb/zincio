@@ -6,7 +6,7 @@ use crate::executor::current_driver;
 #[cfg(target_os = "linux")]
 use crate::op::OpenOp;
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 use std::ffi::CString;
 #[cfg(unix)]
 use std::os::fd::FromRawFd;

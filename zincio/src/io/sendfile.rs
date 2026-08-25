@@ -2,14 +2,16 @@
 
 #[cfg(target_os = "linux")]
 use std::mem::ManuallyDrop;
-#[cfg(unix)]
-use std::os::fd::{AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd};
+use std::os::fd::{AsRawFd, BorrowedFd};
+#[cfg(target_os = "linux")]
+use std::os::fd::{FromRawFd, OwnedFd, RawFd};
 
 #[cfg(target_os = "linux")]
 use mio::Interest;
 
 #[cfg(target_os = "linux")]
-use crate::{fd_inner::InnerRawHandle, io::AsInnerRawHandle};
+use crate::fd_inner::InnerRawHandle;
+use crate::io::AsInnerRawHandle;
 
 #[cfg(target_os = "linux")]
 use super::splice::splice;
@@ -65,7 +67,6 @@ async fn sendfile_exact_completion<'a, 'b>(
     Ok(total_to_socket)
 }
 
-#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 async fn sendfile_exact_poll<'a, 'b>(
     from: &'a impl AsRawFd,
     to: &'b impl AsInnerRawHandle<'b>,
@@ -100,7 +101,6 @@ async fn sendfile_exact_poll<'a, 'b>(
 ///
 /// # Errors
 /// Returns an error if the underlying data transfer fails.
-#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 pub async fn sendfile_exact<'a, 'b>(
     from: &'a impl AsRawFd,
     to: &'b impl AsInnerRawHandle<'b>,

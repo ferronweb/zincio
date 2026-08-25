@@ -41,7 +41,7 @@
 mod buf;
 #[cfg(all(unix, feature = "pipe"))]
 mod pipe;
-#[cfg(feature = "splice")]
+#[cfg(all(any(target_os = "linux", target_os = "freebsd"), feature = "splice"))]
 mod sendfile;
 #[cfg(all(target_os = "linux", feature = "splice"))]
 mod splice;
@@ -54,7 +54,7 @@ use crate::fd_inner::InnerRawHandle;
 pub use self::buf::*;
 #[cfg(all(unix, feature = "pipe"))]
 pub use self::pipe::*;
-#[cfg(feature = "splice")]
+#[cfg(all(any(target_os = "linux", target_os = "freebsd"), feature = "splice"))]
 pub use self::sendfile::*;
 #[cfg(all(target_os = "linux", feature = "splice"))]
 pub use self::splice::*;
