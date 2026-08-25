@@ -837,10 +837,27 @@ fn statx_timestamp_to_system_time(ts: &libc::statx_timestamp) -> io::Result<Syst
     let nanos = ts.tv_nsec;
 
     if secs >= 0 {
-        Ok(UNIX_EPOCH + Duration::new(u64::try_from(secs).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "integer conversion out of range"))?, nanos))
+        Ok(UNIX_EPOCH
+            + Duration::new(
+                u64::try_from(secs).map_err(|_| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "integer conversion out of range",
+                    )
+                })?,
+                nanos,
+            ))
     } else {
         UNIX_EPOCH
-            .checked_sub(Duration::new(u64::try_from(-secs).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "integer conversion out of range"))?, nanos))
+            .checked_sub(Duration::new(
+                u64::try_from(-secs).map_err(|_| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "integer conversion out of range",
+                    )
+                })?,
+                nanos,
+            ))
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid statx timestamp"))
     }
 }

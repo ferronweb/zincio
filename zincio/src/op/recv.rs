@@ -268,7 +268,12 @@ impl<B: IoBufMut> Op for RecvOp<'_, B> {
         let entry = opcode::Recv::new(
             types::Fd(self.handle.handle),
             buf.as_buf_mut_ptr(),
-            u32::try_from(buf.buf_capacity()).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "integer conversion out of range"))?,
+            u32::try_from(buf.buf_capacity()).map_err(|_| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "integer conversion out of range",
+                )
+            })?,
         )
         .flags(if self.peek { libc::MSG_PEEK } else { 0 })
         .build()

@@ -36,7 +36,8 @@ fn socket_addr_to_raw(
     match address {
         SocketAddr::V4(address) => {
             let sockaddr = libc::sockaddr_in {
-                sin_family: libc::sa_family_t::try_from(libc::AF_INET).expect("AF_INET fits in sa_family_t"),
+                sin_family: libc::sa_family_t::try_from(libc::AF_INET)
+                    .expect("AF_INET fits in sa_family_t"),
                 sin_port: address.port().to_be(),
                 sin_addr: libc::in_addr {
                     s_addr: u32::from_ne_bytes(address.ip().octets()),
@@ -65,13 +66,15 @@ fn socket_addr_to_raw(
                 (
                     libc::AF_INET,
                     storage.assume_init(),
-                    u32::try_from(std::mem::size_of::<libc::sockaddr_in>()).expect("sockaddr_in size fits in u32"),
+                    u32::try_from(std::mem::size_of::<libc::sockaddr_in>())
+                        .expect("sockaddr_in size fits in u32"),
                 )
             }
         }
         SocketAddr::V6(address) => {
             let sockaddr = libc::sockaddr_in6 {
-                sin6_family: libc::sa_family_t::try_from(libc::AF_INET6).expect("AF_INET6 fits in sa_family_t"),
+                sin6_family: libc::sa_family_t::try_from(libc::AF_INET6)
+                    .expect("AF_INET6 fits in sa_family_t"),
                 sin6_port: address.port().to_be(),
                 sin6_flowinfo: address.flowinfo(),
                 sin6_addr: libc::in6_addr {
@@ -101,7 +104,8 @@ fn socket_addr_to_raw(
                 (
                     libc::AF_INET6,
                     storage.assume_init(),
-                    u32::try_from(std::mem::size_of::<libc::sockaddr_in6>()).expect("sockaddr_in6 size fits in u32"),
+                    u32::try_from(std::mem::size_of::<libc::sockaddr_in6>())
+                        .expect("sockaddr_in6 size fits in u32"),
                 )
             }
         }
@@ -123,7 +127,12 @@ fn bind_one(address: SocketAddr) -> Result<StdTcpListener, io::Error> {
             libc::SOL_SOCKET,
             libc::SO_REUSEADDR,
             (&raw const reuse_addr).cast(),
-            u32::try_from(std::mem::size_of_val(&reuse_addr)).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "integer conversion out of range"))?,
+            u32::try_from(std::mem::size_of_val(&reuse_addr)).map_err(|_| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "integer conversion out of range",
+                )
+            })?,
         )
     };
     if reuse_addr_result == -1 {
@@ -140,7 +149,12 @@ fn bind_one(address: SocketAddr) -> Result<StdTcpListener, io::Error> {
                 libc::IPPROTO_IPV6,
                 libc::IPV6_V6ONLY,
                 (&raw const ipv6_only).cast(),
-                u32::try_from(std::mem::size_of_val(&ipv6_only)).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "integer conversion out of range"))?,
+                u32::try_from(std::mem::size_of_val(&ipv6_only)).map_err(|_| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "integer conversion out of range",
+                    )
+                })?,
             )
         };
         if ipv6_only_result == -1 {

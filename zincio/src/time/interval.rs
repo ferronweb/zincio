@@ -130,8 +130,9 @@ impl Interval {
                     }
 
                     let elapsed = now.duration_since(base_next);
-                    let missed =
-                        u64::try_from(elapsed.as_nanos() / self.period.as_nanos()).expect("tick count fits in u64") + 1;
+                    let missed = u64::try_from(elapsed.as_nanos() / self.period.as_nanos())
+                        .expect("tick count fits in u64")
+                        + 1;
 
                     // Advance base_next by `missed` periods to compute the next deadline.
                     let mut new_next = base_next;

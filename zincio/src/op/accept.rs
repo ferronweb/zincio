@@ -326,7 +326,8 @@ fn accept_poll_unix(
 
     // Obtain peer address via getpeername into a sockaddr_storage
     let mut peer = MaybeUninit::<libc::sockaddr_storage>::zeroed();
-    let mut peer_len = u32::try_from(mem::size_of::<libc::sockaddr_storage>()).expect("sockaddr_storage size fits in u32");
+    let mut peer_len = u32::try_from(mem::size_of::<libc::sockaddr_storage>())
+        .expect("sockaddr_storage size fits in u32");
     let getpeername_result = unsafe {
         libc::getpeername(
             fd,
@@ -578,7 +579,8 @@ fn poll_completion_unix(result: i32) -> Poll<io::Result<(RawOsHandle, SocketAddr
     }
 
     let mut peer = MaybeUninit::<libc::sockaddr_storage>::zeroed();
-    let mut peer_len = u32::try_from(mem::size_of::<libc::sockaddr_storage>()).expect("sockaddr_storage size fits in u32");
+    let mut peer_len = u32::try_from(mem::size_of::<libc::sockaddr_storage>())
+        .expect("sockaddr_storage size fits in u32");
     let getpeername_result = unsafe {
         libc::getpeername(
             fd,

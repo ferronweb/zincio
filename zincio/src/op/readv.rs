@@ -223,7 +223,9 @@ impl<B: IoVectoredBufMut> Op for ReadvOp<'_, B> {
             self.completion_wsabufs = None;
         }
 
-        Poll::Ready(Ok(usize::try_from(result).expect("bytes read fits in usize")))
+        Poll::Ready(Ok(
+            usize::try_from(result).expect("bytes read fits in usize")
+        ))
     }
 
     #[cfg(windows)]
@@ -348,7 +350,12 @@ impl<B: IoVectoredBufMut> Op for ReadvOp<'_, B> {
         let entry = opcode::Readv::new(
             types::Fd(self.handle.handle),
             iovecs.as_mut_ptr(),
-            u32::try_from(iovecs.len()).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "integer conversion out of range"))?,
+            u32::try_from(iovecs.len()).map_err(|_| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "integer conversion out of range",
+                )
+            })?,
         )
         .build()
         .user_data(user_data);

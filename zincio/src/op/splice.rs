@@ -87,7 +87,9 @@ impl Op for SpliceOp<'_> {
         if result < 0 {
             Poll::Ready(Err(io::Error::from_raw_os_error(-result)))
         } else {
-            Poll::Ready(Ok(usize::try_from(result).expect("bytes transferred fit in usize")))
+            Poll::Ready(Ok(
+                usize::try_from(result).expect("bytes transferred fit in usize")
+            ))
         }
     }
 
@@ -103,7 +105,12 @@ impl Op for SpliceOp<'_> {
             -1,
             types::Fd(self.fd_out.handle),
             -1,
-            u32::try_from(self.len).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "integer conversion out of range"))?,
+            u32::try_from(self.len).map_err(|_| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "integer conversion out of range",
+                )
+            })?,
         )
         .build()
         .user_data(user_data);

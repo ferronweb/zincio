@@ -215,8 +215,8 @@ impl<B: IoBufMut> Op for RecvfromOp<'_, B> {
         #[cfg(unix)]
         let result = {
             let mut addr = MaybeUninit::<libc::sockaddr_storage>::zeroed();
-            let mut addr_len =
-                u32::try_from(std::mem::size_of::<libc::sockaddr_storage>()).expect("sockaddr_storage size fits in u32");
+            let mut addr_len = u32::try_from(std::mem::size_of::<libc::sockaddr_storage>())
+                .expect("sockaddr_storage size fits in u32");
             let read = unsafe {
                 libc::recvfrom(
                     self.handle.handle,
@@ -232,7 +232,10 @@ impl<B: IoBufMut> Op for RecvfromOp<'_, B> {
                 Err(io::Error::last_os_error())
             } else {
                 let address = sockaddr_storage_to_socketaddr(unsafe { &addr.assume_init() })?;
-                Ok((usize::try_from(read).expect("bytes received fits in usize"), address))
+                Ok((
+                    usize::try_from(read).expect("bytes received fits in usize"),
+                    address,
+                ))
             }
         };
 
@@ -432,7 +435,12 @@ impl<B: IoBufMut> Op for RecvfromOp<'_, B> {
         completion.msghdr = unsafe { std::mem::zeroed::<libc::msghdr>() };
         completion.msghdr.msg_name = (&raw mut completion.addr).cast::<libc::c_void>();
         completion.msghdr.msg_namelen =
-            u32::try_from(std::mem::size_of::<libc::sockaddr_storage>()).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "integer conversion out of range"))?;
+            u32::try_from(std::mem::size_of::<libc::sockaddr_storage>()).map_err(|_| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "integer conversion out of range",
+                )
+            })?;
         completion.msghdr.msg_iov = &raw mut completion.iovec;
         completion.msghdr.msg_iovlen = 1;
         completion.msghdr.msg_control = std::ptr::null_mut();

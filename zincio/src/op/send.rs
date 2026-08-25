@@ -236,7 +236,12 @@ impl<B: IoBuf> Op for SendOp<'_, B> {
         let entry = opcode::Send::new(
             types::Fd(self.handle.handle),
             buf.as_buf_ptr(),
-            u32::try_from(buf.buf_len()).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "integer conversion out of range"))?,
+            u32::try_from(buf.buf_len()).map_err(|_| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "integer conversion out of range",
+                )
+            })?,
         )
         .build()
         .user_data(user_data);

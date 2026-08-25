@@ -292,7 +292,12 @@ impl<B: IoBufMut> Op for ReadOp<'_, B> {
         let entry = opcode::Read::new(
             types::Fd(self.handle.handle),
             buf.as_buf_mut_ptr(),
-            u32::try_from(buf.buf_capacity()).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "integer conversion out of range"))?,
+            u32::try_from(buf.buf_capacity()).map_err(|_| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "integer conversion out of range",
+                )
+            })?,
         )
         .build()
         .user_data(user_data);

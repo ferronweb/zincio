@@ -208,7 +208,9 @@ impl<B: IoVectoredBuf> Op for WritevOp<'_, B> {
             self.completion_staging = None;
         }
 
-        Poll::Ready(Ok(usize::try_from(result).expect("bytes written fits in usize")))
+        Poll::Ready(Ok(
+            usize::try_from(result).expect("bytes written fits in usize")
+        ))
     }
 
     #[cfg(windows)]
@@ -337,7 +339,12 @@ impl<B: IoVectoredBuf> Op for WritevOp<'_, B> {
         let entry = opcode::Writev::new(
             types::Fd(self.handle.handle),
             iovecs.as_ptr(),
-            u32::try_from(iovecs.len()).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "integer conversion out of range"))?,
+            u32::try_from(iovecs.len()).map_err(|_| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "integer conversion out of range",
+                )
+            })?,
         )
         .build()
         .user_data(user_data);
