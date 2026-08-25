@@ -1,5 +1,5 @@
 use std::io;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 #[cfg(all(target_vendor = "apple", not(any(target_os = "linux"))))]
 use std::os::darwin::fs::MetadataExt as AppleMetadataExt;
@@ -770,6 +770,7 @@ impl Metadata {
     /// Returns the value of the `dwFileAttributes` field of this metadata.
     #[cfg(windows)]
     #[inline]
+    #[must_use]
     pub fn file_attributes(&self) -> u32 {
         match &self.inner {
             MetadataInner::Std(md) => md.file_attributes(),
@@ -782,6 +783,7 @@ impl Metadata {
     /// This is converted to a Unix timestamp.
     #[cfg(windows)]
     #[inline]
+    #[must_use]
     pub fn creation_time(&self) -> u64 {
         match &self.inner {
             MetadataInner::Std(md) => md.creation_time(),
@@ -794,6 +796,7 @@ impl Metadata {
     /// This is converted to a Unix timestamp.
     #[cfg(windows)]
     #[inline]
+    #[must_use]
     pub fn last_access_time(&self) -> u64 {
         match &self.inner {
             MetadataInner::Std(md) => md.last_access_time(),
@@ -806,6 +809,7 @@ impl Metadata {
     /// This is converted to a Unix timestamp.
     #[cfg(windows)]
     #[inline]
+    #[must_use]
     pub fn last_write_time(&self) -> u64 {
         match &self.inner {
             MetadataInner::Std(md) => md.last_write_time(),
@@ -815,6 +819,7 @@ impl Metadata {
     /// Returns the value of the `nFileSize` fields of this metadata.
     #[cfg(windows)]
     #[inline]
+    #[must_use]
     pub fn file_size(&self) -> u64 {
         match &self.inner {
             MetadataInner::Std(md) => md.file_size(),

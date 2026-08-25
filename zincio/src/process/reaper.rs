@@ -82,7 +82,7 @@ unsafe impl Send for WaitContext {}
 
 #[cfg(windows)]
 unsafe extern "system" fn wait_callback(ctx: *mut std::ffi::c_void, _timed_out: bool) {
-    let mut ctx = Box::from_raw(ctx as *mut WaitContext);
+    let mut ctx = Box::from_raw(ctx.cast::<WaitContext>());
     let result = ctx.child.wait();
     if let Some(sender) = ctx.sender.take() {
         let _ = sender.send(result);
@@ -125,10 +125,10 @@ async fn zombie_reaper_fn(rx: async_channel::Receiver<ZombieReaperMessage>) {
 
         let ok = unsafe {
             RegisterWaitForSingleObject(
-                &mut (*ctx_ptr).wait_handle,
+                &raw mut (*ctx_ptr).wait_handle,
                 process_handle,
                 Some(wait_callback),
-                ctx_ptr as *mut std::ffi::c_void,
+                ctx_ptr.cast::<std::ffi::c_void>(),
                 INFINITE,
                 WT_EXECUTEONLYONCE,
             )

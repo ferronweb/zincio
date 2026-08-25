@@ -297,8 +297,7 @@ impl TimingWheel {
 
         // Fallback to top level
         let level_shift = 6 * (NUM_LEVELS - 1);
-        let slot =
-            usize::try_from((delay >> level_shift) & (SLOTS_PER_LEVEL as u64 - 1)).unwrap();
+        let slot = usize::try_from((delay >> level_shift) & (SLOTS_PER_LEVEL as u64 - 1)).unwrap();
         (NUM_LEVELS - 1, slot)
     }
 }
@@ -398,13 +397,13 @@ mod tests {
 
     fn mock_waker(counter: Arc<Mutex<u32>>) -> Waker {
         fn clone(data: *const ()) -> RawWaker {
-            let arc = unsafe { Arc::from_raw(data as *const Mutex<u32>) };
+            let arc = unsafe { Arc::from_raw(data.cast::<Mutex<u32>>()) };
             let cloned = Arc::clone(&arc);
             std::mem::forget(arc);
-            RawWaker::new(Arc::into_raw(cloned) as *const (), &VTABLE)
+            RawWaker::new(Arc::into_raw(cloned).cast::<()>(), &VTABLE)
         }
         fn wake(data: *const ()) {
-            let arc = unsafe { Arc::from_raw(data as *const Mutex<u32>) };
+            let arc = unsafe { Arc::from_raw(data.cast::<Mutex<u32>>()) };
             {
                 let mut lock = arc.lock().unwrap();
                 *lock += 1;
@@ -412,17 +411,17 @@ mod tests {
             // wake consumes the waker, so drop the Arc here (do not forget)
         }
         fn wake_by_ref(data: *const ()) {
-            let counter = unsafe { &*(data as *const Mutex<u32>) };
+            let counter = unsafe { &*data.cast::<Mutex<u32>>() };
             let mut lock = counter.lock().unwrap();
             *lock += 1;
         }
         fn drop_waker(data: *const ()) {
-            unsafe { std::mem::drop(Arc::from_raw(data as *const Mutex<u32>)) };
+            unsafe { std::mem::drop(Arc::from_raw(data.cast::<Mutex<u32>>())) };
         }
 
         static VTABLE: RawWakerVTable = RawWakerVTable::new(clone, wake, wake_by_ref, drop_waker);
 
-        let ptr = Arc::into_raw(counter) as *const ();
+        let ptr = Arc::into_raw(counter).cast::<()>();
         unsafe { Waker::from_raw(RawWaker::new(ptr, &VTABLE)) }
     }
 
@@ -439,7 +438,7 @@ mod tests {
         let (deadline, _woken_up) = timer.spin_and_get_deadline();
         assert!(deadline.is_some());
         let ms = deadline.unwrap().as_millis();
-        assert!(ms <= 50 && ms > 0, "Deadline should be <= 50ms, got {}", ms);
+        assert!(ms <= 50 && ms > 0, "Deadline should be <= 50ms, got {ms}");
     }
 
     #[test]
@@ -625,19 +624,19 @@ mod tests {
         // Advance to first expiration
         let expired = wheel.advance(10);
         assert_eq!(expired.len(), 1);
-        expired.into_iter().for_each(|w| w.wake());
+        expired.into_iter().for_each(std::task::Waker::wake);
         assert_eq!(*counter1.lock().unwrap(), 1);
 
         // Advance to second expiration (90 more ticks)
         let expired = wheel.advance(90);
         assert_eq!(expired.len(), 1);
-        expired.into_iter().for_each(|w| w.wake());
+        expired.into_iter().for_each(std::task::Waker::wake);
         assert_eq!(*counter2.lock().unwrap(), 1);
 
         // Advance to third expiration (4900 more ticks)
         let expired = wheel.advance(4900);
         assert_eq!(expired.len(), 1);
-        expired.into_iter().for_each(|w| w.wake());
+        expired.into_iter().for_each(std::task::Waker::wake);
         assert_eq!(*counter3.lock().unwrap(), 1);
     }
 

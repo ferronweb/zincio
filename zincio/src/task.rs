@@ -32,7 +32,11 @@ impl Task {
     #[inline]
     pub fn waker(self: &Arc<Self>) -> Waker {
         // SAFETY: the vtable methods correctly clone/drop the Arc reference count.
-        unsafe { Waker::from_raw(Self::raw_waker(Arc::into_raw(Arc::clone(self)).cast::<()>())) }
+        unsafe {
+            Waker::from_raw(Self::raw_waker(
+                Arc::into_raw(Arc::clone(self)).cast::<()>(),
+            ))
+        }
     }
 
     #[inline]

@@ -26,7 +26,7 @@ fn main() -> Result<(), std::io::Error> {
                     .serve_connection(io, service_fn(hello))
                     .await
                 {
-                    println!("Error serving connection: {:?}", err);
+                    println!("Error serving connection: {err:?}");
                 }
             });
         }

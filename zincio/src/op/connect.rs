@@ -65,30 +65,30 @@ fn start_nonblocking_connect(
 
 #[cfg(windows)]
 fn ensure_connectex_bound(socket: SOCKET, addr: *const SOCKADDR) -> Result<(), io::Error> {
-    let family = unsafe { (*addr).sa_family as i32 };
+    let family = unsafe { i32::from((*addr).sa_family) };
     let bind_result = match family {
-        x if x == AF_INET as i32 => {
+        x if x == i32::from(AF_INET) => {
             let local = SOCKADDR_IN {
-                sin_family: AF_INET as u16,
+                sin_family: AF_INET,
                 ..Default::default()
             };
             unsafe {
                 WinSock::bind(
                     socket,
-                    (&local as *const SOCKADDR_IN).cast::<SOCKADDR>(),
+                    (&raw const local).cast::<SOCKADDR>(),
                     std::mem::size_of::<SOCKADDR_IN>() as i32,
                 )
             }
         }
-        x if x == AF_INET6 as i32 => {
+        x if x == i32::from(AF_INET6) => {
             let local = SOCKADDR_IN6 {
-                sin6_family: AF_INET6 as u16,
+                sin6_family: AF_INET6,
                 ..Default::default()
             };
             unsafe {
                 WinSock::bind(
                     socket,
-                    (&local as *const SOCKADDR_IN6).cast::<SOCKADDR>(),
+                    (&raw const local).cast::<SOCKADDR>(),
                     std::mem::size_of::<SOCKADDR_IN6>() as i32,
                 )
             }
@@ -121,11 +121,11 @@ fn load_connect_ex(socket: SOCKET) -> Result<WinSock::LPFN_CONNECTEX, io::Error>
         WinSock::WSAIoctl(
             socket,
             WinSock::SIO_GET_EXTENSION_FUNCTION_POINTER,
-            (&mut guid as *mut _) as *mut c_void,
+            (&raw mut guid).cast::<c_void>(),
             std::mem::size_of_val(&guid) as u32,
-            (&mut connect_ex as *mut _) as *mut c_void,
+            (&raw mut connect_ex).cast::<c_void>(),
             std::mem::size_of_val(&connect_ex) as u32,
-            &mut bytes_returned,
+            &raw mut bytes_returned,
             std::ptr::null_mut(),
             None,
         )
@@ -151,8 +151,8 @@ fn set_connect_context(socket: SOCKET) -> Result<(), io::Error> {
     let result = unsafe {
         WinSock::setsockopt(
             socket,
-            SOL_SOCKET as i32,
-            SO_UPDATE_CONNECT_CONTEXT as i32,
+            SOL_SOCKET,
+            SO_UPDATE_CONNECT_CONTEXT,
             std::ptr::null(),
             0,
         )
@@ -214,11 +214,7 @@ impl<'a> ConnectOp<'a> {
 
     #[cfg(unix)]
     #[inline]
-    fn connect_poll_unix(
-        &self,
-        driver: &AnyDriver,
-        cx: &mut Context<'_>,
-    ) -> Poll<io::Result<()>> {
+    fn connect_poll_unix(&self, driver: &AnyDriver, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         let mut socket_error: libc::c_int = 0;
         let mut socket_error_len = u32::try_from(mem::size_of::<libc::c_int>()).unwrap();
         let getsockopt_result = unsafe {
@@ -308,10 +304,10 @@ impl<'a> ConnectOp<'a> {
         let getsockopt_result = unsafe {
             WinSock::getsockopt(
                 socket,
-                SOL_SOCKET as i32,
-                WinSock::SO_ERROR as i32,
-                (&mut socket_error as *mut i32).cast(),
-                &mut socket_error_len,
+                SOL_SOCKET,
+                WinSock::SO_ERROR,
+                (&raw mut socket_error).cast(),
+                &raw mut socket_error_len,
             )
         };
         if getsockopt_result == SOCKET_ERROR {
@@ -344,8 +340,8 @@ impl<'a> ConnectOp<'a> {
         let getpeername_result = unsafe {
             WinSock::getpeername(
                 socket,
-                (&mut peer as *mut SOCKADDR_STORAGE).cast::<SOCKADDR>(),
-                &mut peer_len,
+                (&raw mut peer).cast::<SOCKADDR>(),
+                &raw mut peer_len,
             )
         };
 

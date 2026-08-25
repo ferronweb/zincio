@@ -238,7 +238,7 @@ impl IocpDriver {
     #[inline]
     fn duration_to_timeout_ms(timeout: Option<Duration>) -> u32 {
         match timeout {
-            Some(timeout) => timeout.as_millis().min(u32::MAX as u128) as u32,
+            Some(timeout) => timeout.as_millis().min(u128::from(u32::MAX)) as u32,
             None => u32::MAX,
         }
     }
@@ -288,9 +288,9 @@ impl IocpDriver {
                 ioctl,
                 ptr::null_mut(),
                 0,
-                (&mut base_socket as *mut SOCKET).cast(),
+                (&raw mut base_socket).cast(),
                 std::mem::size_of::<SOCKET>() as u32,
-                &mut bytes,
+                &raw mut bytes,
                 ptr::null_mut(),
                 None,
             )
@@ -317,8 +317,7 @@ impl IocpDriver {
                     socket = base_socket;
                 }
                 Ok(_) => {
-                    return Err(io::Error::new(
-                        ErrorKind::Other,
+                    return Err(io::Error::other(
                         "failed to resolve base socket for AFD polling",
                     ))
                 }
@@ -341,7 +340,7 @@ impl IocpDriver {
         let object_attributes = OBJECT_ATTRIBUTES {
             Length: std::mem::size_of::<OBJECT_ATTRIBUTES>() as u32,
             RootDirectory: ptr::null_mut(),
-            ObjectName: &object_name,
+            ObjectName: &raw const object_name,
             Attributes: OBJ_CASE_INSENSITIVE,
             SecurityDescriptor: ptr::null(),
             SecurityQualityOfService: ptr::null(),
@@ -352,10 +351,10 @@ impl IocpDriver {
         // SAFETY: pattern to get \Device\Afd handle similar to wepoll (?)
         let status = unsafe {
             NtCreateFile(
-                &mut afd_handle,
+                &raw mut afd_handle,
                 SYNCHRONIZE_ACCESS,
-                &object_attributes,
-                &mut create_status,
+                &raw const object_attributes,
+                &raw mut create_status,
                 ptr::null(),
                 0,
                 FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -370,8 +369,7 @@ impl IocpDriver {
             return Err(Self::ntstatus_to_io_error(status));
         }
         if afd_handle.is_null() {
-            return Err(io::Error::new(
-                ErrorKind::Other,
+            return Err(io::Error::other(
                 "NtCreateFile returned a null AFD handle",
             ));
         }
@@ -443,8 +441,7 @@ impl IocpDriver {
                     return Err(io::Error::new(
                         ErrorKind::Unsupported,
                         format!(
-                            "I/O token {} is registered for completion mode, not poll mode",
-                            registration_token
+                            "I/O token {registration_token} is registered for completion mode, not poll mode"
                         ),
                     ));
                 }
@@ -452,8 +449,7 @@ impl IocpDriver {
                     return Err(io::Error::new(
                         ErrorKind::NotFound,
                         format!(
-                            "I/O token {} is not registered with this driver",
-                            registration_token
+                            "I/O token {registration_token} is not registered with this driver"
                         ),
                     ));
                 }
@@ -468,9 +464,9 @@ impl IocpDriver {
             let poll_token = poll_entry.key();
             io_status.token = poll_token;
 
-            let io_status_ptr = &mut io_status.io_status as *mut IO_STATUS_BLOCK;
-            let input_ptr = (&mut *input as *mut AfdPollInfo).cast();
-            let output_ptr = (&mut *output as *mut AfdPollInfo).cast();
+            let io_status_ptr = &raw mut io_status.io_status;
+            let input_ptr = (&raw mut *input).cast();
+            let output_ptr = (&raw mut *output).cast();
 
             poll_entry.insert(PollOp {
                 registration_token,
@@ -534,13 +530,13 @@ impl IocpDriver {
             let Some(poll_op) = state.poll_ops.get(poll_token) else {
                 return;
             };
-            &poll_op.io_status.io_status as *const IO_STATUS_BLOCK
+            &raw const poll_op.io_status.io_status
         };
 
         let mut cancel_status = IO_STATUS_BLOCK::default();
         // SAFETY: \Device\Afd handle is valid, and I/O status pointer is valid too
         //         (if pointer is missing, it's returned early)
-        let _ = unsafe { NtCancelIoFileEx(afd_handle, io_status_ptr, &mut cancel_status) };
+        let _ = unsafe { NtCancelIoFileEx(afd_handle, io_status_ptr, &raw mut cancel_status) };
     }
 
     #[inline]
@@ -554,8 +550,8 @@ impl IocpDriver {
         let _ = unsafe {
             NtSetInformationFile(
                 windows_handle,
-                &mut status,
-                &info as *const FILE_COMPLETION_INFORMATION as *const c_void,
+                &raw mut status,
+                (&raw const info).cast::<c_void>(),
                 std::mem::size_of::<FILE_COMPLETION_INFORMATION>() as u32,
                 FileReplaceCompletionInformation,
             )
@@ -630,7 +626,7 @@ impl IocpDriver {
                 self.iocp_handle(),
                 entries.as_mut_ptr(),
                 entries.len() as u32,
-                &mut entries_removed,
+                &raw mut entries_removed,
                 timeout_ms,
                 0,
             )
@@ -669,7 +665,7 @@ impl Driver for IocpDriver {
     #[inline]
     fn flush(&self) {
         match self.process_ready_completions() {
-            Ok(_) => {}
+            Ok(()) => {}
             Err(err) if err.kind() == io::ErrorKind::Interrupted => {}
             Err(err) => panic!("iocp flush failed while processing completions: {err}"),
         }
@@ -817,7 +813,7 @@ impl Driver for IocpDriver {
 
             let mut overlapped = Box::new(unsafe { std::mem::zeroed::<OverlappedCtx>() });
             overlapped.token = completion_token;
-            let overlapped_ptr: *mut OVERLAPPED = &mut overlapped.overlapped;
+            let overlapped_ptr: *mut OVERLAPPED = &raw mut overlapped.overlapped;
 
             vacant_completion.insert(Completion {
                 waiter: Some(waker),

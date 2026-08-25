@@ -185,7 +185,7 @@ mod vectored_uring_tests {
             let mut fds: [libc::c_int; 2] = [0, 0];
             #[cfg(syscall_pipe2)]
             let res =
-                unsafe { libc::pipe2(fds.as_mut_ptr() as *mut libc::c_int, libc::O_NONBLOCK) };
+                unsafe { libc::pipe2(fds.as_mut_ptr().cast::<libc::c_int>(), libc::O_NONBLOCK) };
             #[cfg(not(syscall_pipe2))]
             let res = unsafe { libc::pipe(fds.as_mut_ptr() as *mut libc::c_int) };
             assert_eq!(res, 0, "pipe() failed");
@@ -232,11 +232,11 @@ mod vectored_uring_tests {
             let mut dst2 = vec![0u8; total_len - 3]; // rest
             let rd_bufs = vec![
                 libc::iovec {
-                    iov_base: dst1.as_mut_ptr() as *mut libc::c_void,
+                    iov_base: dst1.as_mut_ptr().cast::<libc::c_void>(),
                     iov_len: dst1.len(),
                 },
                 libc::iovec {
-                    iov_base: dst2.as_mut_ptr() as *mut libc::c_void,
+                    iov_base: dst2.as_mut_ptr().cast::<libc::c_void>(),
                     iov_len: dst2.len(),
                 },
             ];

@@ -83,14 +83,14 @@ fn sockaddr_storage_to_socketaddr(storage: &SOCKADDR_STORAGE) -> Result<SocketAd
     let family = storage.ss_family;
 
     if family == AF_INET {
-        let addr_in: &SOCKADDR_IN = unsafe { &*(storage as *const _ as *const SOCKADDR_IN) };
+        let addr_in: &SOCKADDR_IN = unsafe { &*std::ptr::from_ref(storage).cast::<SOCKADDR_IN>() };
         let port = u16::from_be(addr_in.sin_port);
         // s_addr is in network byte order
         let ip_u32 = u32::from_be(unsafe { addr_in.sin_addr.S_un.S_addr });
         let ip = std::net::Ipv4Addr::from(ip_u32);
         Ok(SocketAddr::V4(std::net::SocketAddrV4::new(ip, port)))
     } else if family == AF_INET6 {
-        let addr_in6: &SOCKADDR_IN6 = unsafe { &*(storage as *const _ as *const SOCKADDR_IN6) };
+        let addr_in6: &SOCKADDR_IN6 = unsafe { &*std::ptr::from_ref(storage).cast::<SOCKADDR_IN6>() };
         let port = u16::from_be(addr_in6.sin6_port);
         let ip = std::net::Ipv6Addr::from(unsafe { addr_in6.sin6_addr.u.Byte });
         Ok(SocketAddr::V6(std::net::SocketAddrV6::new(
@@ -117,11 +117,11 @@ fn load_accept_ex(socket: SOCKET) -> Result<WinSock::LPFN_ACCEPTEX, io::Error> {
         WinSock::WSAIoctl(
             socket,
             WinSock::SIO_GET_EXTENSION_FUNCTION_POINTER,
-            (&mut guid as *mut _) as *mut c_void,
+            (&raw mut guid).cast::<c_void>(),
             std::mem::size_of_val(&guid) as u32,
-            (&mut accept_ex as *mut _) as *mut c_void,
+            (&raw mut accept_ex).cast::<c_void>(),
             std::mem::size_of_val(&accept_ex) as u32,
-            &mut bytes_returned,
+            &raw mut bytes_returned,
             ptr::null_mut(),
             None,
         )
@@ -154,11 +154,11 @@ fn load_get_accept_ex_sockaddrs(
         WinSock::WSAIoctl(
             socket,
             WinSock::SIO_GET_EXTENSION_FUNCTION_POINTER,
-            (&mut guid as *mut _) as *mut c_void,
+            (&raw mut guid).cast::<c_void>(),
             std::mem::size_of_val(&guid) as u32,
-            (&mut get_accept_ex_sockaddrs as *mut _) as *mut c_void,
+            (&raw mut get_accept_ex_sockaddrs).cast::<c_void>(),
             std::mem::size_of_val(&get_accept_ex_sockaddrs) as u32,
-            &mut bytes_returned,
+            &raw mut bytes_returned,
             ptr::null_mut(),
             None,
         )
@@ -186,8 +186,8 @@ fn listener_socket_family(listener_socket: SOCKET) -> Result<i32, io::Error> {
     let result = unsafe {
         WinSock::getsockname(
             listener_socket,
-            (&mut addr as *mut SOCKADDR_IN6).cast::<SOCKADDR>(),
-            &mut addr_len,
+            (&raw mut addr).cast::<SOCKADDR>(),
+            &raw mut addr_len,
         )
     };
 
@@ -196,13 +196,13 @@ fn listener_socket_family(listener_socket: SOCKET) -> Result<i32, io::Error> {
         return Err(io::Error::from_raw_os_error(err_code));
     }
 
-    Ok(addr.sin6_family as i32)
+    Ok(i32::from(addr.sin6_family))
 }
 
 #[cfg(windows)]
 fn create_accept_socket(listener_socket: SOCKET) -> Result<SOCKET, io::Error> {
     let family = listener_socket_family(listener_socket)?;
-    if family != AF_INET as i32 && family != AF_INET6 as i32 {
+    if family != i32::from(AF_INET) && family != i32::from(AF_INET6) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "unsupported listening socket family for AcceptEx",
@@ -212,8 +212,8 @@ fn create_accept_socket(listener_socket: SOCKET) -> Result<SOCKET, io::Error> {
     let accept_socket = unsafe {
         WinSock::WSASocketW(
             family,
-            SOCK_STREAM as i32,
-            IPPROTO_TCP as i32,
+            SOCK_STREAM,
+            IPPROTO_TCP,
             ptr::null_mut(),
             0,
             WSA_FLAG_OVERLAPPED,
@@ -232,9 +232,9 @@ fn set_accept_context(listener_socket: SOCKET, accepted_socket: SOCKET) -> Resul
     let result = unsafe {
         WinSock::setsockopt(
             accepted_socket,
-            SOL_SOCKET as i32,
-            SO_UPDATE_ACCEPT_CONTEXT as i32,
-            (&listener_socket as *const SOCKET).cast(),
+            SOL_SOCKET,
+            SO_UPDATE_ACCEPT_CONTEXT,
+            (&raw const listener_socket).cast(),
             std::mem::size_of::<SOCKET>() as i32,
         )
     };
@@ -302,19 +302,11 @@ fn accept_poll_unix(
         )
     };
     #[cfg(not(syscall_accept4))]
-    let accepted_fd = unsafe {
-        libc::accept(
-            fd,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-        )
-    };
+    let accepted_fd = unsafe { libc::accept(fd, std::ptr::null_mut(), std::ptr::null_mut()) };
     if accepted_fd == -1 {
         let error = io::Error::last_os_error();
         if error.kind() == io::ErrorKind::WouldBlock {
-            if let Err(err) =
-                driver.submit_poll(handle, cx.waker().clone(), Interest::READABLE)
-            {
+            if let Err(err) = driver.submit_poll(handle, cx.waker().clone(), Interest::READABLE) {
                 return Poll::Ready(Err(err));
             }
             return Poll::Pending;
@@ -345,9 +337,7 @@ fn accept_poll_unix(
     if getpeername_result == -1 {
         let error = io::Error::last_os_error();
         if error.kind() == io::ErrorKind::WouldBlock {
-            if let Err(err) =
-                driver.submit_poll(handle, cx.waker().clone(), Interest::READABLE)
-            {
+            if let Err(err) = driver.submit_poll(handle, cx.waker().clone(), Interest::READABLE) {
                 return Poll::Ready(Err(err));
             }
             return Poll::Pending;
@@ -373,15 +363,12 @@ fn accept_poll_windows(
         )));
     };
 
-    let accepted_socket = unsafe {
-        WinSock::accept(listener_socket as SOCKET, ptr::null_mut(), ptr::null_mut())
-    };
+    let accepted_socket =
+        unsafe { WinSock::accept(listener_socket as SOCKET, ptr::null_mut(), ptr::null_mut()) };
     if accepted_socket == INVALID_SOCKET {
         let error = io::Error::from_raw_os_error(unsafe { WinSock::WSAGetLastError() });
         if error.kind() == io::ErrorKind::WouldBlock {
-            if let Err(err) =
-                driver.submit_poll(handle, cx.waker().clone(), Interest::READABLE)
-            {
+            if let Err(err) = driver.submit_poll(handle, cx.waker().clone(), Interest::READABLE) {
                 return Poll::Ready(Err(err));
             }
             return Poll::Pending;
@@ -394,8 +381,8 @@ fn accept_poll_windows(
     let getpeername_result = unsafe {
         WinSock::getpeername(
             accepted_socket,
-            (&mut peer as *mut SOCKADDR_STORAGE).cast::<SOCKADDR>(),
-            &mut peer_len,
+            (&raw mut peer).cast::<SOCKADDR>(),
+            &raw mut peer_len,
         )
     };
     if getpeername_result == WinSock::SOCKET_ERROR {
@@ -539,7 +526,7 @@ impl Op for AcceptOp<'_> {
                 0,
                 0,
                 ACCEPTEX_ADDR_LEN as u32,
-                &mut self.bytes_received,
+                &raw mut self.bytes_received,
                 overlapped,
             )
         };
@@ -612,9 +599,9 @@ fn poll_completion_unix(result: i32) -> Poll<io::Result<(RawOsHandle, SocketAddr
 #[inline]
 fn poll_completion_windows(
     op: &mut AcceptOp<'_>,
-    result: i32,
+    _result: i32,
 ) -> Poll<io::Result<(RawOsHandle, SocketAddr)>> {
-    use windows_sys::Win32::Storage::FileSystem::ACCESS_DELETE;
+    
 
     let RawOsHandle::Socket(listener_socket) = op.handle.handle else {
         return Poll::Ready(Err(io::Error::new(
@@ -624,8 +611,7 @@ fn poll_completion_windows(
     };
 
     let Some(accept_socket) = op.accept_socket.take() else {
-        return Poll::Ready(Err(io::Error::new(
-            io::ErrorKind::Other,
+        return Poll::Ready(Err(io::Error::other(
             "AcceptEx completion missing accepted socket",
         )));
     };
@@ -638,8 +624,7 @@ fn poll_completion_windows(
     let peer = match op.accept_output_buffer.take() {
         Some(buf) => buf,
         None => {
-            return Poll::Ready(Err(io::Error::new(
-                io::ErrorKind::Other,
+            return Poll::Ready(Err(io::Error::other(
                 "AcceptEx completion missing peer address",
             )));
         }
@@ -663,28 +648,27 @@ fn poll_completion_windows(
         )));
     };
 
-    let _ = unsafe {
+    let () = unsafe {
         get_accept_ex_sockaddrs_fn(
-            peer.as_ptr() as *const c_void,
+            peer.as_ptr().cast::<c_void>(),
             0,
             0,
             ACCEPTEX_ADDR_LEN as _,
-            &mut local_sockaddr as *mut *mut SOCKADDR_STORAGE as *mut *mut SOCKADDR,
-            &mut local_sockaddr_len as *mut i32,
-            &mut remote_sockaddr as *mut *mut SOCKADDR_STORAGE as *mut *mut SOCKADDR,
-            &mut remote_sockaddr_len as *mut i32,
-        )
+            (&raw mut local_sockaddr).cast::<*mut SOCKADDR>(),
+            &raw mut local_sockaddr_len,
+            (&raw mut remote_sockaddr).cast::<*mut SOCKADDR>(),
+            &raw mut remote_sockaddr_len,
+        );
     };
 
     if remote_sockaddr.is_null() {
-        return Poll::Ready(Err(io::Error::new(
-            io::ErrorKind::Other,
+        return Poll::Ready(Err(io::Error::other(
             "can't obtain remote socket address",
         )));
     }
 
     let address = match sockaddr_storage_to_socketaddr(
-        &(unsafe { std::ptr::read_unaligned(remote_sockaddr as *const SOCKADDR_STORAGE) }),
+        &(unsafe { std::ptr::read_unaligned(remote_sockaddr.cast_const()) }),
     ) {
         Ok(address) => address,
         Err(err) => {

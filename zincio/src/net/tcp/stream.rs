@@ -134,13 +134,13 @@ fn socket_addr_to_raw(address: SocketAddr) -> (i32, SOCKADDR_STORAGE, i32) {
             let mut storage = SOCKADDR_STORAGE::default();
             unsafe {
                 std::ptr::copy_nonoverlapping(
-                    &sockaddr as *const SOCKADDR_IN as *const u8,
-                    &mut storage as *mut SOCKADDR_STORAGE as *mut u8,
+                    (&raw const sockaddr).cast::<u8>(),
+                    (&raw mut storage).cast::<u8>(),
                     std::mem::size_of::<SOCKADDR_IN>(),
                 );
             }
             (
-                AF_INET as _,
+                AF_INET.into(),
                 storage,
                 std::mem::size_of::<SOCKADDR_IN>() as i32,
             )
@@ -151,18 +151,18 @@ fn socket_addr_to_raw(address: SocketAddr) -> (i32, SOCKADDR_STORAGE, i32) {
             sockaddr.sin6_port = address.port().to_be();
             sockaddr.sin6_flowinfo = address.flowinfo();
             sockaddr.sin6_addr.u.Byte = address.ip().octets();
-            sockaddr.Anonymous.sin6_scope_id = address.scope_id() as u32;
+            sockaddr.Anonymous.sin6_scope_id = address.scope_id();
 
             let mut storage = SOCKADDR_STORAGE::default();
             unsafe {
                 std::ptr::copy_nonoverlapping(
-                    &sockaddr as *const SOCKADDR_IN6 as *const u8,
-                    &mut storage as *mut SOCKADDR_STORAGE as *mut u8,
+                    (&raw const sockaddr).cast::<u8>(),
+                    (&raw mut storage).cast::<u8>(),
                     std::mem::size_of::<SOCKADDR_IN6>(),
                 );
             }
             (
-                AF_INET6 as _,
+                AF_INET6.into(),
                 storage,
                 std::mem::size_of::<SOCKADDR_IN6>() as i32,
             )
@@ -189,7 +189,7 @@ fn new_socket(
 ) -> Result<(std::net::TcpStream, SOCKADDR_STORAGE, i32), io::Error> {
     // 0x202 = MAKEWORD(2, 2)
     let mut wsadata = WSADATA::default();
-    if unsafe { WinSock::WSAStartup(0x202, &mut wsadata as *mut WSADATA) } != 0 {
+    if unsafe { WinSock::WSAStartup(0x202, &raw mut wsadata) } != 0 {
         return Err(io::Error::last_os_error());
     }
     let (domain, raw_addr, raw_addr_len) = socket_addr_to_raw(address);
@@ -279,7 +279,7 @@ impl TcpStream {
         #[cfg(unix)]
         let raw_addr_ptr = (&raw const raw_addr).cast::<libc::sockaddr>();
         #[cfg(windows)]
-        let raw_addr_ptr = (&raw_addr as *const SOCKADDR_STORAGE).cast::<SOCKADDR>();
+        let raw_addr_ptr = (&raw const raw_addr).cast::<SOCKADDR>();
         let handle = &stream.handle;
         let mut op = ConnectOp::new(handle, raw_addr_ptr, raw_addr_len);
         poll_fn(move |cx| handle.poll_op(cx, &mut op)).await?;
@@ -439,7 +439,7 @@ impl PollTcpStream {
         #[cfg(unix)]
         let raw_addr_ptr = (&raw const raw_addr).cast::<libc::sockaddr>();
         #[cfg(windows)]
-        let raw_addr_ptr = (&raw_addr as *const SOCKADDR_STORAGE).cast::<SOCKADDR>();
+        let raw_addr_ptr = (&raw const raw_addr).cast::<SOCKADDR>();
 
         let handle = &stream.stream.handle;
         let mut op = ConnectOp::new(handle, raw_addr_ptr, raw_addr_len);
@@ -648,7 +648,7 @@ impl IntoRawSocket for TcpStream {
         // We then move out the inner std stream and transfer its socket ownership to the caller.
         unsafe {
             ManuallyDrop::drop(&mut this.handle);
-            std::ptr::read(&this.inner).into_raw_socket()
+            std::ptr::read(&raw const this.inner).into_raw_socket()
         }
     }
 }
@@ -720,7 +720,9 @@ impl TokioAsyncRead for PollTcpStream {
 
         let this = self.get_mut();
         // Equivalent to .assume_init_mut() in Rust 1.93.0+
-        let unfilled = unsafe { &mut *(std::ptr::from_mut::<[MaybeUninit<u8>]>(buf.unfilled_mut()) as *mut [u8]) };
+        let unfilled = unsafe {
+            &mut *(std::ptr::from_mut::<[MaybeUninit<u8>]>(buf.unfilled_mut()) as *mut [u8])
+        };
         let buf_temp = unsafe { IoBufTemporaryPoll::new(unfilled.as_mut_ptr(), unfilled.len()) };
         let mut op = ReadOp::new(&this.stream.handle, buf_temp);
         match this.stream.handle.poll_op_poll(cx, &mut op) {

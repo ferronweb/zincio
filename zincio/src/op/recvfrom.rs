@@ -62,13 +62,13 @@ fn sockaddr_storage_to_socketaddr(storage: &SOCKADDR_STORAGE) -> Result<SocketAd
     let family = storage.ss_family;
 
     if family == AF_INET {
-        let addr_in: &SOCKADDR_IN = unsafe { &*(storage as *const _ as *const SOCKADDR_IN) };
+        let addr_in: &SOCKADDR_IN = unsafe { &*std::ptr::from_ref(storage).cast::<SOCKADDR_IN>() };
         let port = u16::from_be(addr_in.sin_port);
         let ip_u32 = u32::from_be(unsafe { addr_in.sin_addr.S_un.S_addr });
         let ip = std::net::Ipv4Addr::from(ip_u32);
         Ok(SocketAddr::V4(std::net::SocketAddrV4::new(ip, port)))
     } else if family == AF_INET6 {
-        let addr_in6: &SOCKADDR_IN6 = unsafe { &*(storage as *const _ as *const SOCKADDR_IN6) };
+        let addr_in6: &SOCKADDR_IN6 = unsafe { &*std::ptr::from_ref(storage).cast::<SOCKADDR_IN6>() };
         let port = u16::from_be(addr_in6.sin6_port);
         let ip = std::net::Ipv6Addr::from(unsafe { addr_in6.sin6_addr.u.Byte });
         Ok(SocketAddr::V6(std::net::SocketAddrV6::new(
@@ -99,7 +99,7 @@ fn socket_recvfrom(socket: SOCKET, buf: &mut [u8], peek: bool) -> io::Result<(us
         )
     })?;
 
-    let mut wsabuf = WSABUF {
+    let wsabuf = WSABUF {
         len,
         buf: buf.as_mut_ptr().cast(),
     };
@@ -111,12 +111,12 @@ fn socket_recvfrom(socket: SOCKET, buf: &mut [u8], peek: bool) -> io::Result<(us
     let recv_result = unsafe {
         WinSock::WSARecvFrom(
             socket,
-            &mut wsabuf,
+            &raw const wsabuf,
             1,
-            &mut bytes,
-            &mut flags,
-            (&mut addr as *mut SOCKADDR_STORAGE).cast::<SOCKADDR>(),
-            &mut addr_len,
+            &raw mut bytes,
+            &raw mut flags,
+            (&raw mut addr).cast::<SOCKADDR>(),
+            &raw mut addr_len,
             std::ptr::null_mut(),
             None,
         )
@@ -214,7 +214,8 @@ impl<B: IoBufMut> Op for RecvfromOp<'_, B> {
         #[cfg(unix)]
         let result = {
             let mut addr = MaybeUninit::<libc::sockaddr_storage>::zeroed();
-            let mut addr_len = u32::try_from(std::mem::size_of::<libc::sockaddr_storage>()).unwrap();
+            let mut addr_len =
+                u32::try_from(std::mem::size_of::<libc::sockaddr_storage>()).unwrap();
             let read = unsafe {
                 libc::recvfrom(
                     self.handle.handle,
@@ -323,8 +324,7 @@ impl<B: IoBufMut> Op for RecvfromOp<'_, B> {
                 .completion_state
                 .as_ref()
                 .ok_or_else(|| {
-                    io::Error::new(
-                        io::ErrorKind::Other,
+                    io::Error::other(
                         "recvfrom completion missing source address",
                     )
                 })
@@ -335,7 +335,7 @@ impl<B: IoBufMut> Op for RecvfromOp<'_, B> {
                 .expect("recvfrom op buffer must be present while polling")
                 .as_mut();
             unsafe { buf.set_buf_init(read) };
-            return Poll::Ready(address.map(|address| (read, address)));
+            Poll::Ready(address.map(|address| (read, address)))
         }
     }
 
@@ -380,12 +380,12 @@ impl<B: IoBufMut> Op for RecvfromOp<'_, B> {
         let recv_result = unsafe {
             WinSock::WSARecvFrom(
                 socket as SOCKET,
-                &mut completion.socket_buf as *mut WSABUF,
+                &raw mut completion.socket_buf,
                 1,
                 std::ptr::null_mut(),
-                &mut completion.flags,
-                (&mut completion.addr as *mut SOCKADDR_STORAGE).cast::<SOCKADDR>(),
-                &mut completion.addr_len,
+                &raw mut completion.flags,
+                (&raw mut completion.addr).cast::<SOCKADDR>(),
+                &raw mut completion.addr_len,
                 overlapped,
                 None,
             )
@@ -433,8 +433,7 @@ impl<B: IoBufMut> Op for RecvfromOp<'_, B> {
             iov_len: buf.buf_capacity(),
         };
         completion.msghdr = unsafe { std::mem::zeroed::<libc::msghdr>() };
-        completion.msghdr.msg_name =
-            (&raw mut completion.addr).cast::<libc::c_void>();
+        completion.msghdr.msg_name = (&raw mut completion.addr).cast::<libc::c_void>();
         completion.msghdr.msg_namelen =
             u32::try_from(std::mem::size_of::<libc::sockaddr_storage>()).unwrap();
         completion.msghdr.msg_iov = &raw mut completion.iovec;
@@ -443,13 +442,10 @@ impl<B: IoBufMut> Op for RecvfromOp<'_, B> {
         completion.msghdr.msg_controllen = 0;
         completion.msghdr.msg_flags = 0;
 
-        let entry = opcode::RecvMsg::new(
-            types::Fd(self.handle.handle),
-            &raw mut completion.msghdr,
-        )
-        .flags(if self.peek { libc::MSG_PEEK as u32 } else { 0 })
-        .build()
-        .user_data(user_data);
+        let entry = opcode::RecvMsg::new(types::Fd(self.handle.handle), &raw mut completion.msghdr)
+            .flags(if self.peek { libc::MSG_PEEK as u32 } else { 0 })
+            .build()
+            .user_data(user_data);
 
         Ok(entry)
     }

@@ -191,7 +191,7 @@ where
         let n = {
             let mut tbuf = unsafe { ReadBuf::uninit(buf.as_mut()) };
             match self.inner.as_mut().poll_read(cx, &mut tbuf) {
-                Poll::Ready(Ok(_)) => tbuf.filled().len(),
+                Poll::Ready(Ok(())) => tbuf.filled().len(),
                 Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
                 Poll::Pending => return Poll::Pending,
             }
@@ -262,7 +262,7 @@ where
         let sub_filled = {
             let mut buf = unsafe { hyper::rt::ReadBuf::uninit(tbuf.unfilled_mut()) };
             match self.inner.as_mut().poll_read(cx, buf.unfilled()) {
-                Poll::Ready(Ok(_)) => buf.filled().len(),
+                Poll::Ready(Ok(())) => buf.filled().len(),
                 Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
                 Poll::Pending => return Poll::Pending,
             }

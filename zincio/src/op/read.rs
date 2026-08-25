@@ -30,7 +30,7 @@ fn socket_read(socket: SOCKET, buf: &mut [u8]) -> io::Result<usize> {
         )
     })?;
 
-    let mut wsabuf = WSABUF {
+    let wsabuf = WSABUF {
         len,
         buf: buf.as_mut_ptr().cast(),
     };
@@ -40,10 +40,10 @@ fn socket_read(socket: SOCKET, buf: &mut [u8]) -> io::Result<usize> {
     let recv_result = unsafe {
         WinSock::WSARecv(
             socket,
-            &mut wsabuf,
+            &raw const wsabuf,
             1,
-            &mut bytes,
-            &mut flags,
+            &raw mut bytes,
+            &raw mut flags,
             std::ptr::null_mut(),
             None,
         )
@@ -224,10 +224,10 @@ impl<B: IoBufMut> Op for ReadOp<'_, B> {
                 let recv_result = unsafe {
                     WinSock::WSARecv(
                         socket as SOCKET,
-                        wsabuf.as_mut() as *mut WSABUF,
+                        std::ptr::from_mut::<WSABUF>(wsabuf.as_mut()),
                         1,
                         std::ptr::null_mut(),
-                        &mut flags,
+                        &raw mut flags,
                         overlapped,
                         None,
                     )

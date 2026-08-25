@@ -123,7 +123,7 @@ fn bind_one(address: SocketAddr) -> Result<StdTcpListener, io::Error> {
             libc::SOL_SOCKET,
             libc::SO_REUSEADDR,
             (&raw const reuse_addr).cast(),
-                u32::try_from(std::mem::size_of_val(&reuse_addr)).unwrap(),
+            u32::try_from(std::mem::size_of_val(&reuse_addr)).unwrap(),
         )
     };
     if reuse_addr_result == -1 {
@@ -185,14 +185,14 @@ fn socket_addr_to_raw(address: SocketAddr) -> (i32, SOCKADDR_STORAGE, i32) {
             let mut storage = SOCKADDR_STORAGE::default();
             unsafe {
                 std::ptr::copy_nonoverlapping(
-                    &sockaddr as *const SOCKADDR_IN as *const u8,
-                    &mut storage as *mut SOCKADDR_STORAGE as *mut u8,
+                    (&raw const sockaddr).cast::<u8>(),
+                    (&raw mut storage).cast::<u8>(),
                     std::mem::size_of::<SOCKADDR_IN>(),
                 );
             }
 
             (
-                AF_INET as i32,
+                i32::from(AF_INET),
                 storage,
                 std::mem::size_of::<SOCKADDR_IN>() as i32,
             )
@@ -208,14 +208,14 @@ fn socket_addr_to_raw(address: SocketAddr) -> (i32, SOCKADDR_STORAGE, i32) {
             let mut storage = SOCKADDR_STORAGE::default();
             unsafe {
                 std::ptr::copy_nonoverlapping(
-                    &sockaddr as *const SOCKADDR_IN6 as *const u8,
-                    &mut storage as *mut SOCKADDR_STORAGE as *mut u8,
+                    (&raw const sockaddr).cast::<u8>(),
+                    (&raw mut storage).cast::<u8>(),
                     std::mem::size_of::<SOCKADDR_IN6>(),
                 );
             }
 
             (
-                AF_INET6 as i32,
+                i32::from(AF_INET6),
                 storage,
                 std::mem::size_of::<SOCKADDR_IN6>() as i32,
             )
@@ -227,7 +227,7 @@ fn socket_addr_to_raw(address: SocketAddr) -> (i32, SOCKADDR_STORAGE, i32) {
 fn bind_one(address: SocketAddr) -> Result<StdTcpListener, io::Error> {
     // 0x202 = MAKEWORD(2, 2)
     let mut wsadata = WSADATA::default();
-    if unsafe { WinSock::WSAStartup(0x202, &mut wsadata as *mut WSADATA) } != 0 {
+    if unsafe { WinSock::WSAStartup(0x202, &raw mut wsadata) } != 0 {
         return Err(io::Error::last_os_error());
     }
 
@@ -238,14 +238,14 @@ fn bind_one(address: SocketAddr) -> Result<StdTcpListener, io::Error> {
         return Err(io::Error::from_raw_os_error(err_code));
     }
 
-    if domain == AF_INET6 as i32 {
+    if domain == i32::from(AF_INET6) {
         let ipv6_only: i32 = 0;
         let ipv6_only_result = unsafe {
             WinSock::setsockopt(
                 socket,
-                IPPROTO_IPV6 as i32,
-                IPV6_V6ONLY as i32,
-                (&ipv6_only as *const i32).cast(),
+                IPPROTO_IPV6,
+                IPV6_V6ONLY,
+                (&raw const ipv6_only).cast(),
                 std::mem::size_of_val(&ipv6_only) as i32,
             )
         };
@@ -259,7 +259,7 @@ fn bind_one(address: SocketAddr) -> Result<StdTcpListener, io::Error> {
     let bind_result = unsafe {
         WinSock::bind(
             socket,
-            (&raw_addr as *const SOCKADDR_STORAGE).cast::<SOCKADDR>(),
+            (&raw const raw_addr).cast::<SOCKADDR>(),
             raw_addr_len,
         )
     };
@@ -455,7 +455,7 @@ impl IntoRawSocket for TcpListener {
         // We then move out the inner std stream and transfer its socket ownership to the caller.
         unsafe {
             ManuallyDrop::drop(&mut this.handle);
-            std::ptr::read(&this.inner).into_raw_socket()
+            std::ptr::read(&raw const this.inner).into_raw_socket()
         }
     }
 }

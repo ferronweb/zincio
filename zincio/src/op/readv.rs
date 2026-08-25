@@ -54,7 +54,7 @@ fn socket_read_vectored<B: IoVectoredBufMut>(socket: SOCKET, bufs: &mut B) -> io
         })?;
         wsabufs.push(WSABUF {
             len,
-            buf: iovec.ptr as *mut _,
+            buf: iovec.ptr.cast(),
         });
     }
 
@@ -65,8 +65,8 @@ fn socket_read_vectored<B: IoVectoredBufMut>(socket: SOCKET, bufs: &mut B) -> io
             socket,
             wsabufs.as_mut_ptr(),
             wsabufs.len() as u32,
-            &mut bytes,
-            &mut flags,
+            &raw mut bytes,
+            &raw mut flags,
             std::ptr::null_mut(),
             None,
         )
@@ -133,8 +133,13 @@ impl<B: IoVectoredBufMut> Op for ReadvOp<'_, B> {
         #[cfg(unix)]
         let result = {
             let mut iovecs = iovec_to_system(&mut bufs.as_iovecs_mut());
-            let read =
-                unsafe { libc::readv(self.handle.handle, iovecs.as_mut_ptr(), i32::try_from(iovecs.len()).unwrap()) };
+            let read = unsafe {
+                libc::readv(
+                    self.handle.handle,
+                    iovecs.as_mut_ptr(),
+                    i32::try_from(iovecs.len()).unwrap(),
+                )
+            };
             if read == -1 {
                 Err(io::Error::last_os_error())
             } else {
@@ -241,7 +246,7 @@ impl<B: IoVectoredBufMut> Op for ReadvOp<'_, B> {
                     })?;
                     wsabufs.push(WSABUF {
                         len,
-                        buf: iovec.ptr as *mut _,
+                        buf: iovec.ptr.cast(),
                     });
                 }
 
@@ -253,7 +258,7 @@ impl<B: IoVectoredBufMut> Op for ReadvOp<'_, B> {
                         wsabufs.as_mut_ptr(),
                         wsabufs.len() as u32,
                         std::ptr::null_mut(),
-                        &mut flags,
+                        &raw mut flags,
                         overlapped,
                         None,
                     )

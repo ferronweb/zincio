@@ -1,9 +1,7 @@
-use std::future::poll_fn;
 use std::io::{self, ErrorKind};
 use std::path::Path;
 
 use crate::executor::current_driver;
-use crate::op::Op;
 
 #[cfg(target_os = "linux")]
 use crate::op::OpenOp;
@@ -15,8 +13,6 @@ use std::os::fd::FromRawFd;
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
 
-#[cfg(windows)]
-use crate::fd_inner::RawOsHandle;
 
 use crate::fs::file::File;
 

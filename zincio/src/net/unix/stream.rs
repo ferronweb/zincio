@@ -402,7 +402,9 @@ impl TokioAsyncRead for PollUnixStream {
 
         let this = self.get_mut();
         // Equivalent to .assume_init_mut() in Rust 1.93.0+
-        let unfilled = unsafe { &mut *(std::ptr::from_mut::<[MaybeUninit<u8>]>(buf.unfilled_mut()) as *mut [u8]) };
+        let unfilled = unsafe {
+            &mut *(std::ptr::from_mut::<[MaybeUninit<u8>]>(buf.unfilled_mut()) as *mut [u8])
+        };
         let buf_temp = unsafe { IoBufTemporaryPoll::new(unfilled.as_mut_ptr(), unfilled.len()) };
         let mut op = ReadOp::new(&this.stream.handle, buf_temp);
         match this.stream.handle.poll_op_poll(cx, &mut op) {

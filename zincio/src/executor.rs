@@ -226,7 +226,11 @@ impl BlockOnNotify {
     #[inline]
     fn waker(self: &Arc<Self>) -> Waker {
         // SAFETY: the vtable methods correctly clone/drop the Arc reference count.
-        unsafe { Waker::from_raw(Self::raw_waker(Arc::into_raw(Arc::clone(self)).cast::<()>())) }
+        unsafe {
+            Waker::from_raw(Self::raw_waker(
+                Arc::into_raw(Arc::clone(self)).cast::<()>(),
+            ))
+        }
     }
 
     #[inline]
@@ -278,7 +282,10 @@ impl CurrentRuntimeGuard {
     fn enter(runtime_inner: Rc<RuntimeInner>) -> Self {
         CURRENT_RUNTIME.with(|runtime| {
             let mut runtime = runtime.borrow_mut();
-            assert!(!runtime.is_some(), "can't spawn a runtime inside another runtime");
+            assert!(
+                !runtime.is_some(),
+                "can't spawn a runtime inside another runtime"
+            );
 
             *runtime = Some(runtime_inner);
         });

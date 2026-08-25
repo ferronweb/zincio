@@ -89,8 +89,10 @@ where
         if this.read_fut.is_none() {
             let buf_read = this.read_buf.take();
             if let Some((buf_read, advanced, n)) = buf_read {
-                let unfilled =
-                    unsafe { &mut *(std::ptr::from_mut::<[MaybeUninit<u8>]>(buf.unfilled_mut()) as *mut [u8]) };
+                let unfilled = unsafe {
+                    &mut *(std::ptr::from_mut::<[MaybeUninit<u8>]>(buf.unfilled_mut())
+                        as *mut [u8])
+                };
                 let copy_len = (n - advanced).min(unfilled.len());
                 unsafe {
                     std::ptr::copy_nonoverlapping(
@@ -130,8 +132,10 @@ where
         match read {
             Ok(n) => {
                 // Put buf_read into buf
-                let unfilled =
-                    unsafe { &mut *(std::ptr::from_mut::<[MaybeUninit<u8>]>(buf.unfilled_mut()) as *mut [u8]) };
+                let unfilled = unsafe {
+                    &mut *(std::ptr::from_mut::<[MaybeUninit<u8>]>(buf.unfilled_mut())
+                        as *mut [u8])
+                };
                 let copy_len = n.min(unfilled.len());
                 unsafe {
                     std::ptr::copy_nonoverlapping(
@@ -335,7 +339,7 @@ mod tests {
 
     impl AsyncRead for PendingIo {
         async fn read<B: IoBufMut>(&mut self, buf: B) -> (Result<usize, io::Error>, B) {
-            let _ = futures_util::future::pending::<()>().await;
+            futures_util::future::pending::<()>().await;
             (Ok(0), buf)
         }
     }

@@ -300,8 +300,8 @@ mod tests {
         match inner_raw_handle.poll_op(&mut Context::from_waker(&waker), &mut read_op) {
             Poll::Pending => {}
             Poll::Ready(Ok(_)) => panic!("unexpected success"),
-            Poll::Ready(Err(e)) => panic!("failed to submit operation: {}", e),
-        };
+            Poll::Ready(Err(e)) => panic!("failed to submit operation: {e}"),
+        }
 
         side2.write_all(b"!").expect("failed to write to pipe"); // Exact data written doesn't matter...
 

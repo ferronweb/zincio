@@ -54,8 +54,6 @@ use crate::fd_inner::InnerRawHandle;
 pub use self::buf::*;
 #[cfg(all(unix, feature = "pipe"))]
 pub use self::pipe::*;
-#[cfg(feature = "splice")]
-pub use self::sendfile::*;
 #[cfg(all(target_os = "linux", feature = "splice"))]
 pub use self::splice::*;
 #[cfg(feature = "stdio")]

@@ -148,7 +148,9 @@ where
     })
     .await;
 
-    if let Ok(result) = result { result } else {
+    if let Ok(result) = result {
+        result
+    } else {
         let (inner, buf) = shared
             .try_lock()
             .ok()
@@ -178,7 +180,9 @@ where
     })
     .await;
 
-    if let Ok(result) = result { result } else {
+    if let Ok(result) = result {
+        result
+    } else {
         let (inner, buf) = shared
             .try_lock()
             .ok()

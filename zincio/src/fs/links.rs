@@ -39,10 +39,10 @@ pub fn windows_symlink_dir(path: String, target: String) -> std::io::Result<()> 
             target_w.as_ptr(),
             1, // SYMBOLIC_LINK_FLAG_DIRECTORY
         );
-        if !res {
-            Err(std::io::Error::last_os_error())
-        } else {
+        if res {
             Ok(())
+        } else {
+            Err(std::io::Error::last_os_error())
         }
     }
 }
@@ -74,10 +74,10 @@ pub fn windows_symlink_file(path: String, target: String) -> std::io::Result<()>
             target_w.as_ptr(),
             0, // SYMBOLIC_LINK_FLAG_FILE
         );
-        if !res {
-            Err(std::io::Error::last_os_error())
-        } else {
+        if res {
             Ok(())
+        } else {
+            Err(std::io::Error::last_os_error())
         }
     }
 }
@@ -177,7 +177,7 @@ pub async fn hard_link(
 ///
 /// # Platform-specific behavior
 ///
-/// - On Linux with io_uring support, this uses the `symlinkat` syscall directly.
+/// - On Linux with `io_uring` support, this uses the `symlinkat` syscall directly.
 /// - On Windows, this uses the [`windows_symlink_dir`] helper.
 /// - On other Unix platforms, this either offloads to a blocking thread pool or falls back
 ///   to [`std::os::unix::fs::symlink`].
@@ -310,7 +310,7 @@ pub async fn symlink_dir(
 ///
 /// # Platform-specific behavior
 ///
-/// - On Linux with io_uring support, this uses the `symlinkat` syscall directly.
+/// - On Linux with `io_uring` support, this uses the `symlinkat` syscall directly.
 /// - On Windows, this uses the [`windows_symlink_file`] helper.
 /// - On other Unix platforms, this either offloads to a blocking thread pool or falls back
 ///   to [`std::os::unix::fs::symlink`].

@@ -123,8 +123,8 @@ fn socket_addr_to_raw(address: SocketAddr) -> (SOCKADDR_STORAGE, i32) {
             let mut storage = SOCKADDR_STORAGE::default();
             unsafe {
                 std::ptr::copy_nonoverlapping(
-                    &sockaddr as *const SOCKADDR_IN as *const u8,
-                    &mut storage as *mut SOCKADDR_STORAGE as *mut u8,
+                    (&raw const sockaddr).cast::<u8>(),
+                    (&raw mut storage).cast::<u8>(),
                     std::mem::size_of::<SOCKADDR_IN>(),
                 );
             }
@@ -136,13 +136,13 @@ fn socket_addr_to_raw(address: SocketAddr) -> (SOCKADDR_STORAGE, i32) {
             sockaddr.sin6_port = address.port().to_be();
             sockaddr.sin6_flowinfo = address.flowinfo();
             sockaddr.sin6_addr.u.Byte = address.ip().octets();
-            sockaddr.Anonymous.sin6_scope_id = address.scope_id() as u32;
+            sockaddr.Anonymous.sin6_scope_id = address.scope_id();
 
             let mut storage = SOCKADDR_STORAGE::default();
             unsafe {
                 std::ptr::copy_nonoverlapping(
-                    &sockaddr as *const SOCKADDR_IN6 as *const u8,
-                    &mut storage as *mut SOCKADDR_STORAGE as *mut u8,
+                    (&raw const sockaddr).cast::<u8>(),
+                    (&raw mut storage).cast::<u8>(),
                     std::mem::size_of::<SOCKADDR_IN6>(),
                 );
             }
@@ -173,7 +173,7 @@ async fn connect_one(
     handle.rebind_mode(RegistrationMode::Poll)?;
     socket.set_nonblocking(true)?;
     let (raw_addr, raw_addr_len) = socket_addr_to_raw(address);
-    let raw_addr_ptr = (&raw_addr as *const SOCKADDR_STORAGE).cast::<SOCKADDR>();
+    let raw_addr_ptr = (&raw const raw_addr).cast::<SOCKADDR>();
     let mut op = ConnectOp::new(handle, raw_addr_ptr, raw_addr_len);
     let result = poll_fn(|cx| handle.poll_op(cx, &mut op)).await;
     drop(op);

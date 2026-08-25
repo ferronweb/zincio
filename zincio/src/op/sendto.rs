@@ -112,8 +112,8 @@ fn socket_addr_to_raw(address: SocketAddr) -> (SOCKADDR_STORAGE, i32) {
             let mut storage = SOCKADDR_STORAGE::default();
             unsafe {
                 std::ptr::copy_nonoverlapping(
-                    &sockaddr as *const SOCKADDR_IN as *const u8,
-                    &mut storage as *mut SOCKADDR_STORAGE as *mut u8,
+                    (&raw const sockaddr).cast::<u8>(),
+                    (&raw mut storage).cast::<u8>(),
                     std::mem::size_of::<SOCKADDR_IN>(),
                 );
             }
@@ -125,13 +125,13 @@ fn socket_addr_to_raw(address: SocketAddr) -> (SOCKADDR_STORAGE, i32) {
             sockaddr.sin6_port = address.port().to_be();
             sockaddr.sin6_flowinfo = address.flowinfo();
             sockaddr.sin6_addr.u.Byte = address.ip().octets();
-            sockaddr.Anonymous.sin6_scope_id = address.scope_id() as u32;
+            sockaddr.Anonymous.sin6_scope_id = address.scope_id();
 
             let mut storage = SOCKADDR_STORAGE::default();
             unsafe {
                 std::ptr::copy_nonoverlapping(
-                    &sockaddr as *const SOCKADDR_IN6 as *const u8,
-                    &mut storage as *mut SOCKADDR_STORAGE as *mut u8,
+                    (&raw const sockaddr).cast::<u8>(),
+                    (&raw mut storage).cast::<u8>(),
                     std::mem::size_of::<SOCKADDR_IN6>(),
                 );
             }
@@ -152,7 +152,7 @@ fn socket_sendto<B: IoBuf>(socket: SOCKET, buf: &B, addr: SocketAddr) -> io::Res
         )
     })?;
 
-    let mut wsabuf = WSABUF {
+    let wsabuf = WSABUF {
         len,
         buf: buf.as_buf_ptr().cast_mut().cast(),
     };
@@ -162,11 +162,11 @@ fn socket_sendto<B: IoBuf>(socket: SOCKET, buf: &B, addr: SocketAddr) -> io::Res
     let send_result = unsafe {
         WinSock::WSASendTo(
             socket,
-            &mut wsabuf,
+            &raw const wsabuf,
             1,
-            &mut bytes,
+            &raw mut bytes,
             0,
-            (&raw_addr as *const SOCKADDR_STORAGE).cast::<SOCKADDR>(),
+            (&raw const raw_addr).cast::<SOCKADDR>(),
             raw_addr_len,
             std::ptr::null_mut(),
             None,
@@ -356,11 +356,11 @@ impl<B: IoBuf> Op for SendtoOp<'_, B> {
         let send_result = unsafe {
             WinSock::WSASendTo(
                 socket as SOCKET,
-                &mut completion.socket_buf as *mut WSABUF,
+                &raw mut completion.socket_buf,
                 1,
                 std::ptr::null_mut(),
                 0,
-                (&completion.addr as *const SOCKADDR_STORAGE).cast::<SOCKADDR>(),
+                (&raw const completion.addr).cast::<SOCKADDR>(),
                 completion.addr_len,
                 overlapped,
                 None,
@@ -413,8 +413,7 @@ impl<B: IoBuf> Op for SendtoOp<'_, B> {
         };
 
         completion.msghdr = unsafe { std::mem::zeroed::<libc::msghdr>() };
-        completion.msghdr.msg_name =
-            (&raw mut completion.addr).cast::<libc::c_void>();
+        completion.msghdr.msg_name = (&raw mut completion.addr).cast::<libc::c_void>();
         completion.msghdr.msg_namelen = completion.addr_len;
         completion.msghdr.msg_iov = &raw mut completion.iovec;
         completion.msghdr.msg_iovlen = 1;
@@ -422,12 +421,10 @@ impl<B: IoBuf> Op for SendtoOp<'_, B> {
         completion.msghdr.msg_controllen = 1;
         completion.msghdr.msg_flags = 1;
 
-        let entry = opcode::SendMsg::new(
-            types::Fd(self.handle.handle),
-            &raw const completion.msghdr,
-        )
-        .build()
-        .user_data(user_data);
+        let entry =
+            opcode::SendMsg::new(types::Fd(self.handle.handle), &raw const completion.msghdr)
+                .build()
+                .user_data(user_data);
 
         Ok(entry)
     }

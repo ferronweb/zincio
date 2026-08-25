@@ -30,7 +30,7 @@ fn socket_write(socket: SOCKET, buf: &[u8]) -> io::Result<usize> {
         )
     })?;
 
-    let mut wsabuf = WSABUF {
+    let wsabuf = WSABUF {
         len,
         buf: buf.as_ptr().cast_mut().cast(),
     };
@@ -39,9 +39,9 @@ fn socket_write(socket: SOCKET, buf: &[u8]) -> io::Result<usize> {
     let send_result = unsafe {
         WinSock::WSASend(
             socket,
-            &mut wsabuf,
+            &raw const wsabuf,
             1,
-            &mut bytes,
+            &raw mut bytes,
             0,
             std::ptr::null_mut(),
             None,
@@ -195,12 +195,12 @@ impl<B: IoBuf> Op for WriteOp<'_, B> {
                     })
                 });
                 wsabuf.len = write_len;
-                wsabuf.buf = buf.as_buf_ptr() as *mut _;
+                wsabuf.buf = buf.as_buf_ptr().cast_mut();
 
                 let send_result = unsafe {
                     WinSock::WSASend(
                         socket as SOCKET,
-                        wsabuf.as_mut() as *mut WSABUF,
+                        std::ptr::from_mut::<WSABUF>(wsabuf.as_mut()),
                         1,
                         std::ptr::null_mut(),
                         0,

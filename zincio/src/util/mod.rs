@@ -32,6 +32,7 @@ pub fn supports_completion() -> bool {
 ///
 /// The result is cached for the lifetime of the program.
 #[inline]
+#[must_use]
 pub fn supports_io_uring() -> bool {
     #[cfg(target_os = "linux")]
     {

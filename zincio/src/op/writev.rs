@@ -56,7 +56,7 @@ fn socket_write_vectored<B: IoVectoredBuf>(socket: SOCKET, bufs: &B) -> io::Resu
         })?;
         wsabufs.push(WSABUF {
             len,
-            buf: iovec.ptr as *mut _,
+            buf: iovec.ptr.cast(),
         });
     }
 
@@ -66,7 +66,7 @@ fn socket_write_vectored<B: IoVectoredBuf>(socket: SOCKET, bufs: &B) -> io::Resu
             socket,
             wsabufs.as_mut_ptr(),
             wsabufs.len() as u32,
-            &mut bytes,
+            &raw mut bytes,
             0,
             std::ptr::null_mut(),
             None,
@@ -231,7 +231,7 @@ impl<B: IoVectoredBuf> Op for WritevOp<'_, B> {
                     })?;
                     wsabufs.push(WSABUF {
                         len,
-                        buf: iovec.ptr as *mut _,
+                        buf: iovec.ptr.cast(),
                     });
                 }
 

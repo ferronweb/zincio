@@ -333,8 +333,10 @@ impl UringDriver {
             if key_kind == POLL_KEY_KIND {
                 let waiter = match state.registrations.get_mut(token.0) {
                     Some(HandleRegistration::Poll(registration)) => {
-                        let write = i16::try_from(registration.poll_mask).unwrap() & libc::POLLOUT != 0;
-                        let read = i16::try_from(registration.poll_mask).unwrap() & libc::POLLIN != 0;
+                        let write =
+                            i16::try_from(registration.poll_mask).unwrap() & libc::POLLOUT != 0;
+                        let read =
+                            i16::try_from(registration.poll_mask).unwrap() & libc::POLLIN != 0;
                         if write {
                             registration.poll_write_armed = false;
                             if read {
