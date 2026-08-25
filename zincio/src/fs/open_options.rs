@@ -13,7 +13,6 @@ use std::os::fd::FromRawFd;
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
 
-
 use crate::fs::file::File;
 
 const OPEN_READ: u8 = 1 << 0;
@@ -248,8 +247,10 @@ impl OpenOptions {
             #[cfg(target_os = "linux")]
             {
                 if driver.supports_completion() {
+                    use crate::op::Op;
+
                     let mut op = self.build_open_op(path)?;
-                    let raw = poll_fn(move |cx| op.poll(cx, &driver)).await?;
+                    let raw = std::future::poll_fn(move |cx| op.poll(cx, &driver)).await?;
                     unsafe { std::fs::File::from_raw_fd(raw) }
                 } else if crate::offload_fs() {
                     self.open_in_blocking_pool(path).await?

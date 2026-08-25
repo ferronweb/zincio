@@ -831,6 +831,8 @@ impl Metadata {
 #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
 #[inline]
 fn statx_timestamp_to_system_time(ts: &libc::statx_timestamp) -> io::Result<SystemTime> {
+    use std::time::{Duration, UNIX_EPOCH};
+
     let secs = ts.tv_sec;
     let nanos = ts.tv_nsec;
 

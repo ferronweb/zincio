@@ -1,11 +1,18 @@
 //! Sendfile operations for Linux and FreeBSD.
 
+#[cfg(target_os = "linux")]
+use std::mem::ManuallyDrop;
 #[cfg(unix)]
 use std::os::fd::{AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd};
 
 #[cfg(target_os = "linux")]
-use super::splice::splice;
+use mio::Interest;
 
+#[cfg(target_os = "linux")]
+use crate::{fd_inner::InnerRawHandle, io::AsInnerRawHandle};
+
+#[cfg(target_os = "linux")]
+use super::splice::splice;
 
 #[cfg(target_os = "linux")]
 async fn sendfile_exact_completion<'a, 'b>(
