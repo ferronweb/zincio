@@ -182,8 +182,10 @@ impl TimingWheel {
 
         // Process all level 0 slots that fall within the range
         // Level 0 has 64 slots, each representing 1ms
-        let start_slot = usize::try_from(start_tick).expect("start_tick fits in usize") & (SLOTS_PER_LEVEL - 1);
-        let end_slot = usize::try_from(self.current_tick).expect("current_tick fits in usize") & (SLOTS_PER_LEVEL - 1);
+        let start_slot =
+            usize::try_from(start_tick).expect("start_tick fits in usize") & (SLOTS_PER_LEVEL - 1);
+        let end_slot = usize::try_from(self.current_tick).expect("current_tick fits in usize")
+            & (SLOTS_PER_LEVEL - 1);
 
         if ticks >= SLOTS_PER_LEVEL as u64 {
             // We've wrapped around at least once, process all slots
@@ -281,23 +283,24 @@ impl TimingWheel {
 
             if level == NUM_LEVELS - 1 {
                 // Top level: use the highest bits
-                let slot =
-                    usize::try_from((delay >> level_shift) & (SLOTS_PER_LEVEL as u64 - 1)).expect("slot index fits in usize");
+                let slot = usize::try_from((delay >> level_shift) & (SLOTS_PER_LEVEL as u64 - 1))
+                    .expect("slot index fits in usize");
                 return (level, slot);
             }
 
             // Check if delay fits in this level
             let max_for_level = ((SLOTS_PER_LEVEL as u64) << level_shift) - 1;
             if delay <= max_for_level || level == NUM_LEVELS - 1 {
-                let slot =
-                    usize::try_from((delay >> level_shift) & (SLOTS_PER_LEVEL as u64 - 1)).expect("slot index fits in usize");
+                let slot = usize::try_from((delay >> level_shift) & (SLOTS_PER_LEVEL as u64 - 1))
+                    .expect("slot index fits in usize");
                 return (level, slot);
             }
         }
 
         // Fallback to top level
         let level_shift = 6 * (NUM_LEVELS - 1);
-        let slot = usize::try_from((delay >> level_shift) & (SLOTS_PER_LEVEL as u64 - 1)).expect("slot index fits in usize");
+        let slot = usize::try_from((delay >> level_shift) & (SLOTS_PER_LEVEL as u64 - 1))
+            .expect("slot index fits in usize");
         (NUM_LEVELS - 1, slot)
     }
 }
@@ -331,7 +334,7 @@ impl Timer {
                 .saturating_duration_since(*self.instant.borrow())
                 .as_millis(),
         )
-        .unwrap();
+        .ok()?; // If conversion fails, deadline is too long, just return None.
         if millis < 1 {
             // If the duration is less than 1 millisecond, wake the task immediately
             // One tick is equivalent to 1 millisecond.
@@ -370,7 +373,9 @@ impl Timer {
         *instant = now;
         let mut woken_up = false;
         // Advance the timer wheel
-        for waker in wheel.advance(u64::try_from(elapsed.as_millis()).expect("elapsed milliseconds fit in u64")) {
+        for waker in wheel
+            .advance(u64::try_from(elapsed.as_millis()).expect("elapsed milliseconds fit in u64"))
+        {
             // Wake the pending tasks
             waker.wake();
             woken_up = true;
