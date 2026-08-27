@@ -1,8 +1,8 @@
 # `zincio` change log
 
-## `zincio` UNRELEASED
+## `zincio` 0.2.23
 
-**Not yet released**
+**Released in August 27, 2026**
 
 - Improved resilience for internal integer conversion overflow edge cases.
 
