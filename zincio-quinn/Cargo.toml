@@ -1,6 +1,6 @@
 [package]
 name = "zincio-quinn"
-version = "0.2.23"
+version = "0.2.24"
 edition = "2021"
 authors = ["Dorian Niemiec <dorian@ferron.sh>"]
 description = "A compatibility layer for using `quinn` with the `zincio` async runtime"
