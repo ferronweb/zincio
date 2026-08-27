@@ -1,5 +1,11 @@
 # `zincio` change log
 
+## `zincio` UNRELEASED
+
+**Not yet released**
+
+- Fixed compilation errors on `armv7-unknown-linux-*eabihf` and `aarch64-unknown-linux-*` targets.
+
 ## `zincio` 0.2.23
 
 **Released in August 27, 2026**

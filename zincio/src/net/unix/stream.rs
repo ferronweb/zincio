@@ -70,7 +70,7 @@ fn socket_addr_to_raw(path: &Path) -> Result<(libc::sockaddr_un, libc::socklen_t
     }
 
     for (index, byte) in bytes.iter().copied().enumerate() {
-        sockaddr.sun_path[index] = i8::try_from(byte).map_err(|_| {
+        sockaddr.sun_path[index] = libc::c_char::try_from(byte).map_err(|_| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "integer conversion out of range",
