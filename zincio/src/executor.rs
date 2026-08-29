@@ -801,8 +801,7 @@ impl Runtime {
                 inner.interrupt_pending.store(false, Ordering::Release);
                 inner.waiting.store(true, Ordering::Release);
 
-                // Use should_skip_wait to avoid executing two wait operations.
-                if root_notify.is_ready() && inner.should_skip_wait() {
+                if root_notify.is_ready() || inner.should_skip_wait() {
                     inner.stop_waiting();
                     continue;
                 }
