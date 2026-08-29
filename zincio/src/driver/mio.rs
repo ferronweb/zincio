@@ -77,6 +77,12 @@ impl MioDriver {
     }
 
     #[inline]
+    fn interest_contains(current: Interest, needed: Interest) -> bool {
+        (!needed.is_readable() || current.is_readable())
+            && (!needed.is_writable() || current.is_writable())
+    }
+
+    #[inline]
     pub(crate) fn wait_timeout(&self, timeout: Option<Duration>) {
         let mut poll = self.poll.borrow_mut();
         let mut events = self.events.borrow_mut();
@@ -230,7 +236,11 @@ impl Driver for MioDriver {
             )
         })?;
 
-        if registration.interest != Some(interest) {
+        if registration
+            .interest
+            .as_ref()
+            .is_none_or(|i| !Self::interest_contains(*i, interest))
+        {
             // Re-register, but only if the interest has change
             // This prevents unnecessary system calls when there's no I/O events to process.
             self.registry.reregister(
@@ -238,7 +248,11 @@ impl Driver for MioDriver {
                 token,
                 interest,
             )?;
-            registration.interest = Some(interest);
+            if let Some(old_interest) = registration.interest {
+                registration.interest = Some(old_interest | interest);
+            } else {
+                registration.interest = Some(interest);
+            }
         }
 
         self.update_waiter(&mut registration.waiter, waker);
