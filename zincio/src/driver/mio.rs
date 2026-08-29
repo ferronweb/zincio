@@ -40,6 +40,7 @@ pub struct MioDriver {
     events: RefCell<Events>,
     state: RefCell<DriverState>,
     waker: Arc<MioWaker>,
+    waiter_count: RefCell<usize>,
 }
 
 impl MioDriver {
@@ -57,16 +58,21 @@ impl MioDriver {
                 registrations: Slab::with_capacity(1024),
             }),
             waker: Arc::new(waker),
+            waiter_count: RefCell::new(0),
         })
     }
 
     #[inline]
-    fn update_waiter(waiter_slot: &mut Option<Waker>, waker: Waker) {
+    fn update_waiter(&self, waiter_slot: &mut Option<Waker>, waker: Waker) {
+        let was_none = waiter_slot.is_none();
         if !waiter_slot
             .as_ref()
             .is_some_and(|waiter| waiter.will_wake(&waker))
         {
             *waiter_slot = Some(waker);
+        }
+        if was_none {
+            *self.waiter_count.borrow_mut() += 1;
         }
     }
 
@@ -92,6 +98,7 @@ impl MioDriver {
                     registration.interest = None; // Prevent poll (when no epoll) from stalling
                     if let Some(task) = registration.waiter.take() {
                         task.wake();
+                        *self.waiter_count.borrow_mut() -= 1;
                     }
                 }
             }
@@ -101,6 +108,11 @@ impl MioDriver {
 
 impl Driver for MioDriver {
     type Interruptor = MioInterruptor;
+
+    #[inline]
+    fn should_flush(&self) -> bool {
+        *self.waiter_count.borrow() > 0
+    }
 
     #[inline]
     fn flush(&self) {
@@ -191,7 +203,13 @@ impl Driver for MioDriver {
         self.registry.deregister(&mut source)?;
 
         let mut state = self.state.borrow_mut();
-        let _ = state.registrations.try_remove(handle.token.0);
+        if state
+            .registrations
+            .try_remove(handle.token.0)
+            .is_some_and(|r| r.waiter.is_some())
+        {
+            *self.waiter_count.borrow_mut() -= 1;
+        }
         Ok(())
     }
 
@@ -222,7 +240,7 @@ impl Driver for MioDriver {
             registration.interest = Some(interest);
         }
 
-        Self::update_waiter(&mut registration.waiter, waker);
+        self.update_waiter(&mut registration.waiter, waker);
         Ok(())
     }
 }
