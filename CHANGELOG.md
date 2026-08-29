@@ -4,6 +4,7 @@
 
 **Not yet released**
 
+- Optimized `io_uring` performance by reducing unnecessary atomic operations.
 - Optimized `mio` (`epoll`/`kqueue`/`poll`) performance to prevent unnecessary system calls when there's no I/O events to process.
 
 ## `zincio` 0.2.24

@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::io::{self, ErrorKind};
 use std::os::fd::RawFd;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc as StdArc;
 use std::task::Waker;
 use std::time::Duration;
@@ -76,7 +75,7 @@ pub struct UringDriver {
     state: RefCell<DriverState>,
     interrupt_eventfd: Option<StdArc<RawFd>>,
     interrupt_buffer: RefCell<Box<[u8; 8]>>,
-    pending_submissions: AtomicBool,
+    pending_submissions: RefCell<bool>,
     ext_arg: bool,
     timespec: RefCell<Box<Timespec>>,
 }
@@ -110,7 +109,7 @@ impl UringDriver {
             }),
             interrupt_eventfd: Some(StdArc::new(eventfd)),
             interrupt_buffer: RefCell::new(Box::new([0; 8])),
-            pending_submissions: AtomicBool::new(false),
+            pending_submissions: RefCell::new(false),
             ext_arg,
             timespec: RefCell::new(Box::new(Timespec::new())),
         };
@@ -186,7 +185,7 @@ impl UringDriver {
                 .map_err(|_| io::Error::other("io_uring submission queue is full"))?;
         }
 
-        self.pending_submissions.store(true, Ordering::Release);
+        *self.pending_submissions.borrow_mut() = true;
 
         Ok(())
     }
@@ -267,10 +266,9 @@ impl UringDriver {
                     ring.submit()
                 };
                 Self::submitter_call_result(submit_result)?;
-                self.pending_submissions
-                    .store(!ring.submission().is_empty(), Ordering::Release);
+                *self.pending_submissions.borrow_mut() = !ring.submission().is_empty();
             } else {
-                self.pending_submissions.store(false, Ordering::Release);
+                *self.pending_submissions.borrow_mut() = false;
             }
         }
 
@@ -422,7 +420,7 @@ impl Driver for UringDriver {
 
     #[inline]
     fn should_flush(&self) -> bool {
-        self.pending_submissions.load(Ordering::Acquire)
+        *self.pending_submissions.borrow()
     }
 
     #[inline]
