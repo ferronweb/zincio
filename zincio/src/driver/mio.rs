@@ -232,6 +232,7 @@ impl Driver for MioDriver {
 
         if registration.interest != Some(interest) {
             // Re-register, but only if the interest has change
+            // This prevents unnecessary system calls when there's no I/O events to process.
             self.registry.reregister(
                 &mut mio::unix::SourceFd(&registration.fd),
                 token,
