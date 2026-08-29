@@ -801,7 +801,8 @@ impl Runtime {
                 inner.interrupt_pending.store(false, Ordering::Release);
                 inner.waiting.store(true, Ordering::Release);
 
-                if root_notify.is_ready() || inner.should_skip_wait() {
+                // Use should_skip_wait to avoid executing two wait operations.
+                if root_notify.is_ready() && inner.should_skip_wait() {
                     inner.stop_waiting();
                     continue;
                 }
@@ -846,7 +847,9 @@ impl Runtime {
             // Flush i/o_uring submissions promptly even for small batches.
             // Previously gated on batch.len()>64, which added up to 256 polls
             // of latency to first write in the batch (p99 regression for H1/H2).
-            if inner.driver.should_flush() {
+            //
+            // Also, should_skip_wait avoids executing two wait operations.
+            if inner.driver.should_flush() && inner.should_skip_wait() {
                 inner.driver.flush();
             }
         }
