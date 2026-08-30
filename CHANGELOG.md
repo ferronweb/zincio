@@ -1,8 +1,8 @@
 # `zincio` change log
 
-## `zincio` UNRELEASED
+## `zincio` 0.2.25
 
-**Not yet released**
+**Released in August 30, 2026**
 
 - Optimized `io_uring` performance by reducing unnecessary atomic operations.
 - Optimized `mio` (`epoll`/`kqueue`/`poll`) performance to reduce unnecessary system calls.
