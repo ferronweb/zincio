@@ -16,7 +16,6 @@
 
 use std::{
     future::Future,
-    mem::MaybeUninit,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -89,31 +88,15 @@ where
         if this.read_fut.is_none() {
             let buf_read = this.read_buf.take();
             if let Some((buf_read, advanced, n)) = buf_read {
-                let unfilled = unsafe {
-                    &mut *(std::ptr::from_mut::<[MaybeUninit<u8>]>(buf.unfilled_mut())
-                        as *mut [u8])
-                };
-                let copy_len = (n - advanced).min(unfilled.len());
-                unsafe {
-                    std::ptr::copy_nonoverlapping(
-                        buf_read.as_ptr().add(advanced),
-                        unfilled.as_mut_ptr(),
-                        copy_len,
-                    );
-                };
-                unsafe { buf.assume_init(copy_len) };
-                buf.advance(copy_len);
+                let copy_len = (n - advanced).min(buf.remaining());
+                buf.put_slice(&buf_read[advanced..advanced + copy_len]);
                 if advanced + copy_len < n {
                     this.read_buf = Some((buf_read, advanced + copy_len, n));
                 }
                 return Poll::Ready(Ok(()));
             }
-            let buf = {
-                let slice = Buffer::new_uninit_slice(BUFFER_SIZE);
-                // SAFETY: u8 is a primitive type and has no padding, so
-                // uninitialized memory is safe to read as a `Buffer`.
-                unsafe { slice.assume_init() }
-            };
+            // Zeroed: a `u8` must be initialized even before it is read.
+            let buf: Buffer = vec![0; BUFFER_SIZE].into_boxed_slice();
             let Some(mut inner) = this.inner.take() else {
                 return Poll::Ready(Err(std::io::Error::other(
                     "another operation is already in progress",
@@ -132,20 +115,8 @@ where
         match read {
             Ok(n) => {
                 // Put buf_read into buf
-                let unfilled = unsafe {
-                    &mut *(std::ptr::from_mut::<[MaybeUninit<u8>]>(buf.unfilled_mut())
-                        as *mut [u8])
-                };
-                let copy_len = n.min(unfilled.len());
-                unsafe {
-                    std::ptr::copy_nonoverlapping(
-                        buf_read.as_ptr(),
-                        unfilled.as_mut_ptr(),
-                        copy_len,
-                    );
-                };
-                unsafe { buf.assume_init(copy_len) };
-                buf.advance(copy_len);
+                let copy_len = n.min(buf.remaining());
+                buf.put_slice(&buf_read[..copy_len]);
                 if copy_len < n {
                     this.read_buf = Some((buf_read, copy_len, n));
                 }

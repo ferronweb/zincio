@@ -22,7 +22,7 @@
 
 use std::future::poll_fn;
 use std::io::{self, IoSlice};
-use std::mem::{ManuallyDrop, MaybeUninit};
+use std::mem::ManuallyDrop;
 use std::os::fd::OwnedFd;
 use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::pin::Pin;
@@ -235,11 +235,11 @@ impl TokioAsyncRead for PollPipe {
         }
 
         let this = self.get_mut();
-        // Equivalent to .assume_init_mut() in Rust 1.93.0+
-        let unfilled = unsafe {
-            &mut *(std::ptr::from_mut::<[MaybeUninit<u8>]>(buf.unfilled_mut()) as *mut [u8])
-        };
-        let buf_temp = unsafe { IoBufTemporaryPoll::new(unfilled.as_mut_ptr(), unfilled.len()) };
+        // Only a pointer reaches the kernel, which writes the bytes `assume_init`
+        // then counts: no `&mut [u8]` over memory that is not initialized yet.
+        let unfilled = unsafe { buf.unfilled_mut() };
+        let buf_temp =
+            unsafe { IoBufTemporaryPoll::new(unfilled.as_mut_ptr().cast::<u8>(), unfilled.len()) };
         let mut op = ReadOp::new(&this.stream.handle, buf_temp);
         match this.stream.handle.poll_op_poll(cx, &mut op) {
             Poll::Ready(Ok(read)) => {
