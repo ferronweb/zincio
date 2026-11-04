@@ -193,7 +193,7 @@ mod tests {
             let read = crate::time::timeout(std::time::Duration::from_secs(10), read)
                 .await
                 .expect("the reader was never woken");
-            assert_eq!(read.expect("read"), 0, "end of stream");     
+            assert_eq!(read.expect("read"), 0, "end of stream");
         });
     }
 
