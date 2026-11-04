@@ -131,6 +131,7 @@ mod tests {
     /// When the peer drains the socket, the writer must be woken, not the
     /// reader that registered after it.
     #[cfg(all(target_os = "linux", feature = "time"))]
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn io_uring_wakes_a_blocked_writer_while_a_read_waits() {
         let Ok(driver) = AnyDriver::new_uring() else {

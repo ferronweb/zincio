@@ -318,6 +318,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn wait_wakes_task_for_ready_token() {
         use std::{
             io::Write,
