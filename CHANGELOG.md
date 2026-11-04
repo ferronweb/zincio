@@ -1,5 +1,12 @@
 # `zincio` change log
 
+## `zinico` UNRELEASED
+
+**Not yet released**
+
+- Improved I/O buffer-related soundness. ([thank you, @Iaotle](https://github.com/ferronweb/zincio/pull/21))
+- The I/O driver now wakes up both reader and writer path properly. ([thank you, @Iaotle](https://github.com/ferronweb/zincio/pull/20))
+
 ## `zincio` 0.2.25
 
 **Released in August 30, 2026**
