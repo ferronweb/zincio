@@ -125,4 +125,44 @@ mod tests {
             server.await.expect("server task should complete");
         });
     }
+
+    /// A tokio read into spare capacity the reader has not initialized
+    /// (`read_buf` on an empty `Vec`): the bytes the kernel wrote, and no more.
+    #[test]
+    fn poll_tcp_stream_reads_into_uninitialized_capacity() {
+        let runtime = crate::executor::Runtime::new(
+            #[cfg(unix)]
+            AnyDriver::new_mio().expect("mio driver should initialize"),
+            #[cfg(windows)]
+            AnyDriver::new_iocp().expect("iocp driver should initialize"),
+        );
+        runtime.block_on(async {
+            let address = "127.0.0.1:0"
+                .parse::<SocketAddr>()
+                .expect("address should parse");
+            let Some(listener) = try_bind_listener(address) else {
+                return;
+            };
+            let server_address = listener
+                .local_addr()
+                .expect("listener should expose address");
+            let server = spawn(async move {
+                let (mut stream, _) = listener.accept().await?;
+                stream.write(b"uninit".to_vec()).await.0?;
+                stream.shutdown(Shutdown::Both)?;
+                Ok::<(), std_io::Error>(())
+            });
+            let mut client = PollTcpStream::connect(server_address)
+                .await
+                .expect("client should connect");
+            let mut received = Vec::with_capacity(64);
+            while AsyncReadExt::read_buf(&mut client, &mut received)
+                .await
+                .expect("tokio read_buf should succeed")
+                > 0
+            {}
+            assert_eq!(received, b"uninit");
+            server.await.expect("server task should complete");
+        });
+    }
 }
