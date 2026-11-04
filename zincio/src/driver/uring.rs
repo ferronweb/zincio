@@ -17,10 +17,13 @@ use crate::{
     fd_inner::InnerRawHandle,
 };
 
-const KEY_KIND_BITS: u64 = 1;
+const KEY_KIND_BITS: u64 = 2;
 const KEY_KIND_MASK: u64 = (1u64 << KEY_KIND_BITS) - 1;
-const POLL_KEY_KIND: u8 = 0;
+// A handle can have a read poll and a write poll in flight at once, so the
+// key says which one completed.
+const POLL_READ_KEY_KIND: u8 = 0;
 const COMPLETION_KEY_KIND: u8 = 1;
+const POLL_WRITE_KEY_KIND: u8 = 2;
 
 pub struct UringInterruptor {
     eventfd: std::sync::Weak<RawFd>,
@@ -47,7 +50,6 @@ impl Interruptor for UringInterruptor {
 
 struct PollRegistration {
     fd: RawFd,
-    poll_mask: u32,
     waiter_read: Option<Waker>,
     poll_read_armed: bool,
     waiter_write: Option<Waker>,
@@ -135,8 +137,13 @@ impl UringDriver {
     }
 
     #[inline]
-    fn encode_poll_key(token: Token) -> u64 {
-        ((token.0 as u64) << KEY_KIND_BITS) | u64::from(POLL_KEY_KIND)
+    fn encode_poll_key(token: Token, write: bool) -> u64 {
+        let kind = if write {
+            POLL_WRITE_KEY_KIND
+        } else {
+            POLL_READ_KEY_KIND
+        };
+        ((token.0 as u64) << KEY_KIND_BITS) | u64::from(kind)
     }
 
     #[inline]
@@ -191,10 +198,16 @@ impl UringDriver {
     }
 
     #[inline]
-    fn push_poll_add(&self, token: Token, fd: RawFd, poll_mask: u32) -> Result<(), io::Error> {
+    fn push_poll_add(
+        &self,
+        token: Token,
+        fd: RawFd,
+        poll_mask: u32,
+        write: bool,
+    ) -> Result<(), io::Error> {
         let entry = opcode::PollAdd::new(types::Fd(fd), poll_mask)
             .build()
-            .user_data(Self::encode_poll_key(token));
+            .user_data(Self::encode_poll_key(token, write));
         self.push_entry(&entry)
     }
 
@@ -328,23 +341,14 @@ impl UringDriver {
             let token = Self::decode_token(key);
             let key_kind = Self::decode_key_kind(key);
 
-            if key_kind == POLL_KEY_KIND {
+            if key_kind == POLL_READ_KEY_KIND || key_kind == POLL_WRITE_KEY_KIND {
+                // Wake the side whose poll this was: the registration's other
+                // poll, if armed, is still in flight.
+                let write = key_kind == POLL_WRITE_KEY_KIND;
                 let waiter = match state.registrations.get_mut(token.0) {
                     Some(HandleRegistration::Poll(registration)) => {
-                        let write = i16::try_from(registration.poll_mask)
-                            .expect("poll_mask fits in i16")
-                            & libc::POLLOUT
-                            != 0;
-                        let read = i16::try_from(registration.poll_mask)
-                            .expect("poll_mask fits in i16")
-                            & libc::POLLIN
-                            != 0;
                         if write {
                             registration.poll_write_armed = false;
-                            if read {
-                                registration.poll_read_armed = false;
-                                registration.waiter_read.take();
-                            }
                             registration.waiter_write.take()
                         } else {
                             registration.poll_read_armed = false;
@@ -456,7 +460,8 @@ impl Driver for UringDriver {
     fn register_handle_with_mode(
         &self,
         handle: &InnerRawHandle,
-        interest: Interest,
+        // Each poll says what it waits for (`submit_poll`).
+        _interest: Interest,
         mode: RegistrationMode,
     ) -> Result<Token, io::Error> {
         let mut state = self.state.borrow_mut();
@@ -470,7 +475,6 @@ impl Driver for UringDriver {
             RegistrationMode::Poll => {
                 entry.insert(HandleRegistration::Poll(PollRegistration {
                     fd: handle.handle,
-                    poll_mask: Self::interest_to_poll_mask(interest),
                     waiter_read: None,
                     poll_read_armed: false,
                     waiter_write: None,
@@ -486,15 +490,12 @@ impl Driver for UringDriver {
     fn reregister_handle(
         &self,
         handle: &InnerRawHandle,
-        interest: Interest,
+        _interest: Interest,
     ) -> Result<(), io::Error> {
         let mut state = self.state.borrow_mut();
         match state.registrations.get_mut(handle.token.0) {
-            Some(HandleRegistration::Completion) => Ok(()),
-            Some(HandleRegistration::Poll(registration)) => {
-                registration.poll_mask = Self::interest_to_poll_mask(interest);
-                Ok(())
-            }
+            // A poll says what it waits for with each submission (`submit_poll`).
+            Some(HandleRegistration::Completion | HandleRegistration::Poll(_)) => Ok(()),
             None => Err(io::Error::new(
                 ErrorKind::NotFound,
                 format!(
@@ -543,6 +544,7 @@ impl Driver for UringDriver {
         interest: Interest,
     ) -> Result<(), io::Error> {
         let token = handle.token();
+        let write = interest.is_writable();
         let poll_spec = {
             let mut state = self.state.borrow_mut();
             let registration = match state.registrations.get_mut(token.0) {
@@ -564,14 +566,12 @@ impl Driver for UringDriver {
                 }
             };
 
-            let write = interest.is_writable();
             if write {
                 Self::update_waiter(&mut registration.waiter_write, waker);
             } else {
                 Self::update_waiter(&mut registration.waiter_read, waker);
             }
             let desired_mask = Self::interest_to_poll_mask(interest);
-            registration.poll_mask = desired_mask;
 
             if (write && registration.poll_write_armed) || (!write && registration.poll_read_armed)
             {
@@ -587,30 +587,15 @@ impl Driver for UringDriver {
         };
 
         if let Some((fd, poll_mask)) = poll_spec {
-            if let Err(submit_err) = self.push_poll_add(token, fd, poll_mask) {
+            if let Err(submit_err) = self.push_poll_add(token, fd, poll_mask, write) {
                 let mut state = self.state.borrow_mut();
                 if let Some(HandleRegistration::Poll(registration)) =
                     state.registrations.get_mut(token.0)
                 {
-                    let write = i16::try_from(registration.poll_mask).map_err(|_| {
-                        std::io::Error::new(
-                            std::io::ErrorKind::InvalidInput,
-                            "integer conversion out of range",
-                        )
-                    })? & libc::POLLOUT
-                        != 0;
-                    let read = i16::try_from(registration.poll_mask).map_err(|_| {
-                        std::io::Error::new(
-                            std::io::ErrorKind::InvalidInput,
-                            "integer conversion out of range",
-                        )
-                    })? & libc::POLLIN
-                        != 0;
                     if write {
                         registration.poll_write_armed = false;
                         registration.waiter_write = None;
-                    }
-                    if read {
+                    } else {
                         registration.poll_read_armed = false;
                         registration.waiter_read = None;
                     }

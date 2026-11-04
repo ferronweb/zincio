@@ -126,6 +126,77 @@ mod tests {
         });
     }
 
+    /// `io_uring` with a read poll and a write poll in flight on one socket: a
+    /// writer blocked on a full socket, then a reader waiting on the same one.
+    /// When the peer drains the socket, the writer must be woken, not the
+    /// reader that registered after it.
+    #[cfg(all(target_os = "linux", feature = "time"))]
+    #[test]
+    fn io_uring_wakes_a_blocked_writer_while_a_read_waits() {
+        let Ok(driver) = AnyDriver::new_uring() else {
+            return; // no io_uring here
+        };
+        a_blocked_writer_is_woken_while_a_read_waits(driver);
+    }
+
+    /// The same on the readiness driver (epoll).
+    #[cfg(all(unix, feature = "time"))]
+    #[test]
+    fn mio_wakes_a_blocked_writer_while_a_read_waits() {
+        a_blocked_writer_is_woken_while_a_read_waits(
+            AnyDriver::new_mio().expect("mio driver should initialize"),
+        );
+    }
+
+    #[cfg(all(unix, feature = "time"))]
+    fn a_blocked_writer_is_woken_while_a_read_waits(driver: AnyDriver) {
+        const SIZE: usize = 16 << 20;
+        let runtime = crate::executor::Runtime::new(driver);
+        runtime.block_on(async {
+            let std_listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+            let address = std_listener.local_addr().expect("address");
+            let (go, wait) = std::sync::mpsc::channel::<()>();
+            let peer = std::thread::spawn(move || {
+                let (mut socket, _) = std_listener.accept().expect("accept");
+                wait.recv().expect("go");
+                let mut buf = vec![0u8; 1 << 20];
+                let mut total = 0;
+                while let Ok(n) = std::io::Read::read(&mut socket, &mut buf) {
+                    if n == 0 {
+                        break;
+                    }
+                    total += n;
+                }
+                total
+            });
+            let stream = PollTcpStream::connect(address)
+                .await
+                .expect("client should connect");
+            let (mut reader, mut writer) = tokio::io::split(stream);
+            let write = spawn(async move {
+                writer.write_all(&vec![7u8; SIZE]).await?;
+                writer.shutdown().await
+            });
+            // The write fills the socket and waits, then a read waits too.
+            crate::time::sleep(std::time::Duration::from_millis(200)).await;
+            let read = spawn(async move {
+                let mut byte = [0u8; 1];
+                reader.read(&mut byte).await
+            });
+            crate::time::sleep(std::time::Duration::from_millis(200)).await;
+            go.send(()).expect("peer waits");
+            let written = crate::time::timeout(std::time::Duration::from_secs(10), write)
+                .await
+                .expect("the blocked writer was never woken");
+            written.expect("write_all");
+            assert_eq!(peer.join().expect("peer"), SIZE);
+            let read = crate::time::timeout(std::time::Duration::from_secs(10), read)
+                .await
+                .expect("the reader was never woken");
+            assert_eq!(read.expect("read"), 0, "end of stream");     
+        });
+    }
+
     /// A tokio read into spare capacity the reader has not initialized
     /// (`read_buf` on an empty `Vec`): the bytes the kernel wrote, and no more.
     #[test]

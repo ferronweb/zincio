@@ -26,7 +26,10 @@ impl Interruptor for MioInterruptor {
 
 struct Registration {
     fd: RawFd,
-    waiter: Option<Waker>,
+    /// A read and a write can wait on one handle at once, from different
+    /// tasks: each keeps its own waker.
+    waiter_read: Option<Waker>,
+    waiter_write: Option<Waker>,
     interest: Option<Interest>,
 }
 
@@ -102,9 +105,20 @@ impl MioDriver {
 
                 if let Some(registration) = state.registrations.get_mut(event.token().0) {
                     registration.interest = None; // Prevent poll (when no epoll) from stalling
-                    if let Some(task) = registration.waiter.take() {
-                        task.wake();
-                        *self.waiter_count.borrow_mut() -= 1;
+
+                    // Wake the side the event is for; the other keeps waiting.
+                    let read = event.is_readable() || event.is_read_closed() || event.is_error();
+                    let write = event.is_writable() || event.is_write_closed() || event.is_error();
+                    for (ready, waiter) in [
+                        (read, &mut registration.waiter_read),
+                        (write, &mut registration.waiter_write),
+                    ] {
+                        if ready {
+                            if let Some(task) = waiter.take() {
+                                task.wake();
+                                *self.waiter_count.borrow_mut() -= 1;
+                            }
+                        }
                     }
                 }
             }
@@ -149,7 +163,8 @@ impl Driver for MioDriver {
             let token = Token(entry.key());
             entry.insert(Registration {
                 fd: handle.handle,
-                waiter: None,
+                waiter_read: None,
+                waiter_write: None,
                 interest: Some(interest),
             });
             token
@@ -209,12 +224,10 @@ impl Driver for MioDriver {
         self.registry.deregister(&mut source)?;
 
         let mut state = self.state.borrow_mut();
-        if state
-            .registrations
-            .try_remove(handle.token.0)
-            .is_some_and(|r| r.waiter.is_some())
-        {
-            *self.waiter_count.borrow_mut() -= 1;
+        if let Some(r) = state.registrations.try_remove(handle.token.0) {
+            let waiting =
+                usize::from(r.waiter_read.is_some()) + usize::from(r.waiter_write.is_some());
+            *self.waiter_count.borrow_mut() -= waiting;
         }
         Ok(())
     }
@@ -236,26 +249,33 @@ impl Driver for MioDriver {
             )
         })?;
 
+        // Re-arm with every interest still waiting, not only this one: a
+        // re-registration replaces the previous interest.
+        let mut wanted = interest;
+        if registration.waiter_read.is_some() {
+            wanted |= Interest::READABLE;
+        }
+        if registration.waiter_write.is_some() {
+            wanted |= Interest::WRITABLE;
+        }
         if registration
             .interest
             .as_ref()
-            .is_none_or(|i| !Self::interest_contains(*i, interest))
+            .is_none_or(|i| !Self::interest_contains(*i, wanted))
         {
-            // Re-register, but only if the interest has change
+            // Re-register, but only if the interest has changed.
             // This prevents unnecessary system calls when there's no I/O events to process.
-            self.registry.reregister(
-                &mut mio::unix::SourceFd(&registration.fd),
-                token,
-                interest,
-            )?;
-            if let Some(old_interest) = registration.interest {
-                registration.interest = Some(old_interest | interest);
-            } else {
-                registration.interest = Some(interest);
-            }
+            self.registry
+                .reregister(&mut mio::unix::SourceFd(&registration.fd), token, wanted)?;
+            registration.interest = Some(wanted);
         }
 
-        self.update_waiter(&mut registration.waiter, waker);
+        if interest.is_writable() {
+            self.update_waiter(&mut registration.waiter_write, waker.clone());
+        }
+        if interest.is_readable() {
+            self.update_waiter(&mut registration.waiter_read, waker);
+        }
         Ok(())
     }
 }
