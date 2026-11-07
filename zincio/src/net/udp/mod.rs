@@ -279,7 +279,8 @@ impl UdpSocket {
         Ok(PollUdpSocket {
             socket,
             read_ready: RefCell::new(false),
-            write_ready: RefCell::new(false),
+            // Writable until the kernel says otherwise, as a new socket is.
+            write_ready: RefCell::new(true),
         })
     }
 
@@ -779,6 +780,51 @@ mod tests {
             Err(err) if err.kind() == std_io::ErrorKind::PermissionDenied => None,
             Err(err) => panic!("poll udp socket should bind: {err}"),
         }
+    }
+
+    /// A socket just made is writable: `try_io_writable` goes to the kernel without a
+    /// readiness poll first. quinn sends its Retry packets, stateless resets and
+    /// refusals that way, and they were dropped as "write not ready".
+    #[cfg_attr(miri, ignore)]
+    #[test]
+    fn a_new_poll_udp_socket_writes_before_any_poll() {
+        let runtime = crate::executor::Runtime::new(
+            #[cfg(unix)]
+            AnyDriver::new_mio().expect("mio driver should initialize"),
+            #[cfg(windows)]
+            AnyDriver::new_iocp().expect("iocp driver should initialize"),
+        );
+        runtime.block_on(async {
+            let address = "127.0.0.1:0"
+                .parse::<SocketAddr>()
+                .expect("address should parse");
+            let Some(socket) = try_bind_poll_udp(address) else {
+                return;
+            };
+            for socket in [
+                socket.try_clone().expect("clone should succeed"),
+                socket,
+                try_bind_udp(address)
+                    .expect("udp socket should bind")
+                    .into_poll()
+                    .expect("into_poll should succeed"),
+            ] {
+                let mut ran = false;
+                socket
+                    .try_io_writable(|| {
+                        ran = true;
+                        Ok(())
+                    })
+                    .expect("a new socket should be writable");
+                assert!(ran);
+                // The kernel's would-block is what makes it wait for readiness.
+                let blocked = socket.try_io_writable(|| -> std_io::Result<()> {
+                    Err(std_io::ErrorKind::WouldBlock.into())
+                });
+                assert!(blocked.is_err());
+                assert!(socket.try_io_writable(|| Ok(())).is_err(), "now it waits");
+            }
+        });
     }
 
     #[cfg_attr(miri, ignore)]
