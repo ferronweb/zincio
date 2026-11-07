@@ -4,7 +4,10 @@
 
 **Not yet released**
 
+- Added support for `AsFd` and `AsSocket` trait methods for I/O structs ([thank you, @Iaotle](https://github.com/ferronweb/zincio/pull/22))
+- Improved task correctness when the async runtime is shut down and dropped.  ([thank you, @Iaotle](https://github.com/ferronweb/zincio/pull/24))
 - Improved I/O buffer-related soundness. ([thank you, @Iaotle](https://github.com/ferronweb/zincio/pull/21))
+- Improved UDP socket write correctness for QUIC.  ([thank you, @Iaotle](https://github.com/ferronweb/zincio/pull/23))
 - The I/O driver now wakes up both reader and writer path properly. ([thank you, @Iaotle](https://github.com/ferronweb/zincio/pull/20))
 
 ## `zincio` 0.2.25
