@@ -1,8 +1,8 @@
 # `zincio` change log
 
-## `zinico` UNRELEASED
+## `zincio` 0.2.26
 
-**Not yet released**
+**Released in November 7, 2026**
 
 - Added support for `AsFd` and `AsSocket` trait methods for I/O structs ([thank you, @Iaotle](https://github.com/ferronweb/zincio/pull/22))
 - Improved task correctness when the async runtime is shut down and dropped.  ([thank you, @Iaotle](https://github.com/ferronweb/zincio/pull/24))
