@@ -237,4 +237,41 @@ mod tests {
             server.await.expect("server task should complete");
         });
     }
+    /// A runtime dropped with a task still waiting on a stream drops the task, and with
+    /// it the stream: the peer sees its end.
+    #[cfg_attr(miri, ignore)]
+    #[test]
+    fn a_dropped_runtime_closes_the_streams_its_tasks_held() {
+        for driver in [
+            AnyDriver::new_mio().expect("mio driver should initialize"),
+            #[cfg(target_os = "linux")]
+            AnyDriver::new_uring().expect("io_uring driver should initialize"),
+        ] {
+            let std_listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+            let address = std_listener.local_addr().expect("address");
+            let peer = std::thread::spawn(move || {
+                let (mut socket, _) = std_listener.accept().expect("accept");
+                socket
+                    .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                    .expect("timeout");
+                let mut byte = [0u8; 1];
+                std::io::Read::read(&mut socket, &mut byte)
+            });
+            let runtime = crate::executor::Runtime::new(driver);
+            runtime.block_on(async move {
+                let mut stream = PollTcpStream::connect(address)
+                    .await
+                    .expect("client should connect");
+                let _task = spawn(async move {
+                    let mut byte = [0u8; 1];
+                    let _ = AsyncReadExt::read(&mut stream, &mut byte).await;
+                });
+                // Let the task start and wait on the socket.
+                crate::time::sleep(std::time::Duration::from_millis(50)).await;
+            });
+            drop(runtime);
+            let read = peer.join().expect("peer");
+            assert_eq!(read.expect("the peer should see the end, not time out"), 0);
+        }
+    }
 }

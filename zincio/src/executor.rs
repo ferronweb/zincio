@@ -472,11 +472,20 @@ pub(crate) fn offload_fs() -> bool {
     })
 }
 
+/// The smallest task list that is swept for freed tasks.
+const TASK_SWEEP_MIN: usize = 64;
+
 pub(crate) struct RuntimeInner {
     queue: Rc<UnsafeCell<VecDeque<Arc<Task>>>>,
     next_task: Rc<RefCell<VecDeque<Arc<Task>>>>,
     remote_queue: Arc<SegQueue<Arc<Task>>>,
     driver: Rc<AnyDriver>,
+    /// Every task spawned and not yet freed, so dropping the runtime can drop the futures
+    /// of those still waiting: a waiting task is kept alive by its waker, held by the
+    /// driver or the timer its future keeps alive in turn.
+    tasks: RefCell<Vec<std::sync::Weak<Task>>>,
+    /// The length of `tasks` at which the freed ones are swept out.
+    sweep_at: std::cell::Cell<usize>,
     waiting: Arc<AtomicBool>,
     interrupt_pending: Arc<AtomicBool>,
     blocking_pool: Option<Box<dyn BlockingThreadPool>>,
@@ -537,6 +546,7 @@ impl RuntimeInner {
             interrupt_pending: Arc::clone(&self.interrupt_pending),
         });
 
+        self.track(&task);
         self.enqueue(task);
         JoinHandle::new(state)
     }
@@ -559,7 +569,34 @@ impl RuntimeInner {
             waiting: Arc::clone(&self.waiting),
             interrupt_pending: Arc::clone(&self.interrupt_pending),
         });
+        self.track(&task);
         self.enqueue(task);
+    }
+
+    /// Notes a new task, sweeping out freed ones whenever the list has doubled.
+    #[inline]
+    fn track(&self, task: &Arc<Task>) {
+        let mut tasks = self.tasks.borrow_mut();
+        tasks.push(Arc::downgrade(task));
+        if tasks.len() >= self.sweep_at.get() {
+            tasks.retain(|task| task.strong_count() > 0);
+            self.sweep_at.set((tasks.len() * 2).max(TASK_SWEEP_MIN));
+        }
+    }
+
+    /// Drops the futures of the tasks still alive: what they hold (sockets, timers,
+    /// other tasks' wakers) goes with them. Futures dropped here may spawn more tasks.
+    fn drop_tasks(&self) {
+        loop {
+            let tasks = std::mem::take(&mut *self.tasks.borrow_mut());
+            if tasks.is_empty() {
+                return;
+            }
+            for task in tasks.iter().filter_map(std::sync::Weak::upgrade) {
+                let future = task.future.borrow_mut().take();
+                drop(future);
+            }
+        }
     }
 
     /// Spawn a blocking task on this runtime's thread pool.
@@ -682,6 +719,8 @@ impl Runtime {
                 #[allow(clippy::arc_with_non_send_sync)]
                 remote_queue: Arc::new(SegQueue::new()),
                 driver: Rc::new(driver),
+                tasks: RefCell::new(Vec::new()),
+                sweep_at: std::cell::Cell::new(TASK_SWEEP_MIN),
                 waiting: Arc::new(AtomicBool::new(false)),
                 interrupt_pending: Arc::new(AtomicBool::new(false)),
                 blocking_pool,
@@ -864,6 +903,7 @@ impl Drop for Runtime {
             zombie_reaper.close();
         }
         let runtime_guard = CurrentRuntimeGuard::enter(inner.clone());
+        inner.drop_tasks();
         drop(inner);
         drop(runtime_guard);
     }
