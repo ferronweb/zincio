@@ -4,9 +4,9 @@ use std::cell::RefCell;
 use std::io;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs, UdpSocket as StdUdpSocket};
 #[cfg(unix)]
-use std::os::fd::{AsRawFd, IntoRawFd, RawFd};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, IntoRawFd, RawFd};
 #[cfg(windows)]
-use std::os::windows::io::{AsRawSocket, IntoRawSocket, RawSocket};
+use std::os::windows::io::{AsRawSocket, AsSocket, BorrowedSocket, IntoRawSocket, RawSocket};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -69,7 +69,8 @@ impl PollUdpSocket {
         Ok(Self {
             socket: UdpSocket::from_std_with_mode(inner, RegistrationMode::Poll)?,
             read_ready: RefCell::new(false),
-            write_ready: RefCell::new(false),
+            // Writable until the kernel says otherwise, as a new socket is.
+            write_ready: RefCell::new(true),
         })
     }
 
@@ -196,7 +197,8 @@ impl PollUdpSocket {
         Ok(Self {
             socket: self.socket.try_clone()?,
             read_ready: RefCell::new(false),
-            write_ready: RefCell::new(false),
+            // Writable until the kernel says otherwise, as a new socket is.
+            write_ready: RefCell::new(true),
         })
     }
 
@@ -599,6 +601,14 @@ impl AsRawFd for PollUdpSocket {
 }
 
 #[cfg(unix)]
+impl AsFd for PollUdpSocket {
+    #[inline]
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.socket.inner.as_fd()
+    }
+}
+
+#[cfg(unix)]
 impl IntoRawFd for PollUdpSocket {
     #[inline]
     fn into_raw_fd(self) -> RawFd {
@@ -611,6 +621,14 @@ impl AsRawSocket for PollUdpSocket {
     #[inline]
     fn as_raw_socket(&self) -> RawSocket {
         self.socket.inner.as_raw_socket()
+    }
+}
+
+#[cfg(windows)]
+impl AsSocket for PollUdpSocket {
+    #[inline]
+    fn as_socket(&self) -> BorrowedSocket<'_> {
+        self.socket.inner.as_socket()
     }
 }
 

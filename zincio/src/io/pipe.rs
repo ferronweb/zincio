@@ -24,7 +24,7 @@ use std::future::poll_fn;
 use std::io::{self, IoSlice};
 use std::mem::ManuallyDrop;
 use std::os::fd::OwnedFd;
-use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd, RawFd};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -157,10 +157,24 @@ impl AsRawFd for Pipe {
     }
 }
 
+impl AsFd for Pipe {
+    #[inline]
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.inner.as_fd()
+    }
+}
+
 impl AsRawFd for PollPipe {
     #[inline]
     fn as_raw_fd(&self) -> RawFd {
         self.stream.inner.as_raw_fd()
+    }
+}
+
+impl AsFd for PollPipe {
+    #[inline]
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.stream.inner.as_fd()
     }
 }
 

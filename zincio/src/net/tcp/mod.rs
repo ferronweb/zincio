@@ -237,6 +237,7 @@ mod tests {
             server.await.expect("server task should complete");
         });
     }
+
     /// A runtime dropped with a task still waiting on a stream drops the task, and with
     /// it the stream: the peer sees its end.
     #[cfg_attr(miri, ignore)]
@@ -273,5 +274,46 @@ mod tests {
             let read = peer.join().expect("peer");
             assert_eq!(read.expect("the peer should see the end, not time out"), 0);
         }
+    }
+
+    /// The borrowed descriptor is the stream's own socket: an option set through it
+    /// shows on the stream, for the listener and both kinds of stream.
+    #[cfg(unix)]
+    #[test]
+    fn as_fd_borrows_the_socket_itself() {
+        use std::os::fd::{AsFd, AsRawFd};
+
+        let runtime = crate::executor::Runtime::new(
+            AnyDriver::new_mio().expect("mio driver should initialize"),
+        );
+        runtime.block_on(async {
+            let address = "127.0.0.1:0"
+                .parse::<SocketAddr>()
+                .expect("address should parse");
+            let Some(listener) = try_bind_listener(address) else {
+                return;
+            };
+            assert_eq!(listener.as_fd().as_raw_fd(), listener.as_raw_fd());
+            let server_address = listener
+                .local_addr()
+                .expect("listener should expose address");
+            let server = spawn(async move { listener.accept().await.map(|(stream, _)| stream) });
+            let client = PollTcpStream::connect(server_address)
+                .await
+                .expect("client should connect");
+            let accepted = server.await.expect("accept should succeed");
+
+            let through_fd = |fd: std::os::fd::BorrowedFd<'_>, nodelay: bool| {
+                std::net::TcpStream::from(fd.try_clone_to_owned().expect("dup should succeed"))
+                    .set_nodelay(nodelay)
+                    .expect("set through the descriptor");
+            };
+            for nodelay in [false, true] {
+                through_fd(client.as_fd(), nodelay);
+                assert_eq!(client.nodelay().expect("nodelay"), nodelay);
+                through_fd(accepted.as_fd(), nodelay);
+                assert_eq!(accepted.nodelay().expect("nodelay"), nodelay);
+            }
+        });
     }
 }

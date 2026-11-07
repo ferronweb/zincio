@@ -17,9 +17,11 @@ use std::io::{self, IoSlice};
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::net::{Shutdown, SocketAddr, ToSocketAddrs};
 #[cfg(unix)]
-use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd, RawFd};
 #[cfg(windows)]
-use std::os::windows::io::{AsRawSocket, FromRawSocket, IntoRawSocket, RawSocket};
+use std::os::windows::io::{
+    AsRawSocket, AsSocket, BorrowedSocket, FromRawSocket, IntoRawSocket, RawSocket,
+};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -604,10 +606,26 @@ impl AsRawFd for TcpStream {
 }
 
 #[cfg(unix)]
+impl AsFd for TcpStream {
+    #[inline]
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.inner.as_fd()
+    }
+}
+
+#[cfg(unix)]
 impl AsRawFd for PollTcpStream {
     #[inline]
     fn as_raw_fd(&self) -> RawFd {
         self.stream.inner.as_raw_fd()
+    }
+}
+
+#[cfg(unix)]
+impl AsFd for PollTcpStream {
+    #[inline]
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.stream.inner.as_fd()
     }
 }
 
@@ -643,6 +661,14 @@ impl AsRawSocket for TcpStream {
 }
 
 #[cfg(windows)]
+impl AsSocket for TcpStream {
+    #[inline]
+    fn as_socket(&self) -> BorrowedSocket<'_> {
+        self.inner.as_socket()
+    }
+}
+
+#[cfg(windows)]
 impl IntoRawSocket for TcpStream {
     #[inline]
     fn into_raw_socket(self) -> RawSocket {
@@ -662,6 +688,14 @@ impl AsRawSocket for PollTcpStream {
     #[inline]
     fn as_raw_socket(&self) -> RawSocket {
         self.stream.as_raw_socket()
+    }
+}
+
+#[cfg(windows)]
+impl AsSocket for PollTcpStream {
+    #[inline]
+    fn as_socket(&self) -> BorrowedSocket<'_> {
+        self.stream.as_socket()
     }
 }
 
