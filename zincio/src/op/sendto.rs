@@ -422,8 +422,8 @@ impl<B: IoBuf> Op for SendtoOp<'_, B> {
         completion.msghdr.msg_iov = &raw mut completion.iovec;
         completion.msghdr.msg_iovlen = 1;
         completion.msghdr.msg_control = std::ptr::null_mut();
-        completion.msghdr.msg_controllen = 1;
-        completion.msghdr.msg_flags = 1;
+        completion.msghdr.msg_controllen = 0;
+        completion.msghdr.msg_flags = 0;
 
         let entry =
             opcode::SendMsg::new(types::Fd(self.handle.handle), &raw const completion.msghdr)
