@@ -16,7 +16,7 @@ use std::future::poll_fn;
 use std::io::{self, IoSlice};
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::net::Shutdown;
-use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::net::{SocketAddr, UnixStream as StdUnixStream};
 use std::path::Path;
@@ -398,6 +398,13 @@ impl AsRawFd for PollUnixStream {
     }
 }
 
+impl AsFd for PollUnixStream {
+    #[inline]
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.stream.inner.as_fd()
+    }
+}
+
 impl IntoRawFd for PollUnixStream {
     #[inline]
     fn into_raw_fd(self) -> RawFd {
@@ -508,6 +515,13 @@ impl AsRawFd for UnixStream {
     #[inline]
     fn as_raw_fd(&self) -> RawFd {
         self.inner.as_raw_fd()
+    }
+}
+
+impl AsFd for UnixStream {
+    #[inline]
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.inner.as_fd()
     }
 }
 

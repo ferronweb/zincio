@@ -15,9 +15,11 @@ use std::io;
 use std::mem::ManuallyDrop;
 use std::net::{SocketAddr, TcpListener as StdTcpListener, ToSocketAddrs};
 #[cfg(unix)]
-use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd, RawFd};
 #[cfg(windows)]
-use std::os::windows::io::{AsRawSocket, FromRawSocket, IntoRawSocket, RawSocket};
+use std::os::windows::io::{
+    AsRawSocket, AsSocket, BorrowedSocket, FromRawSocket, IntoRawSocket, RawSocket,
+};
 
 use mio::Interest;
 #[cfg(windows)]
@@ -437,6 +439,14 @@ impl AsRawFd for TcpListener {
 }
 
 #[cfg(unix)]
+impl AsFd for TcpListener {
+    #[inline]
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.inner.as_fd()
+    }
+}
+
+#[cfg(unix)]
 impl IntoRawFd for TcpListener {
     #[inline]
     fn into_raw_fd(self) -> RawFd {
@@ -456,6 +466,14 @@ impl AsRawSocket for TcpListener {
     #[inline]
     fn as_raw_socket(&self) -> RawSocket {
         self.inner.as_raw_socket()
+    }
+}
+
+#[cfg(windows)]
+impl AsSocket for TcpListener {
+    #[inline]
+    fn as_socket(&self) -> BorrowedSocket<'_> {
+        self.inner.as_socket()
     }
 }
 
