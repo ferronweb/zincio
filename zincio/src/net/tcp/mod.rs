@@ -244,9 +244,12 @@ mod tests {
     #[test]
     fn a_dropped_runtime_closes_the_streams_its_tasks_held() {
         for driver in [
+            #[cfg(unix)]
             AnyDriver::new_mio().expect("mio driver should initialize"),
             #[cfg(target_os = "linux")]
             AnyDriver::new_uring().expect("io_uring driver should initialize"),
+            #[cfg(windows)]
+            AnyDriver::new_iocp().expect("iocp driver should initialize"),
         ] {
             let std_listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
             let address = std_listener.local_addr().expect("address");
