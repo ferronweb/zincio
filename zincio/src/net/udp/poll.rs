@@ -69,7 +69,8 @@ impl PollUdpSocket {
         Ok(Self {
             socket: UdpSocket::from_std_with_mode(inner, RegistrationMode::Poll)?,
             read_ready: RefCell::new(false),
-            write_ready: RefCell::new(false),
+            // Writable until the kernel says otherwise, as a new socket is.
+            write_ready: RefCell::new(true),
         })
     }
 
@@ -196,7 +197,8 @@ impl PollUdpSocket {
         Ok(Self {
             socket: self.socket.try_clone()?,
             read_ready: RefCell::new(false),
-            write_ready: RefCell::new(false),
+            // Writable until the kernel says otherwise, as a new socket is.
+            write_ready: RefCell::new(true),
         })
     }
 
