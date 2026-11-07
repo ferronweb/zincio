@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use mio::Interest;
 
 #[cfg(unix)]
-use std::os::fd::{AsRawFd, IntoRawFd, RawFd};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, IntoRawFd, RawFd};
 #[cfg(windows)]
 use std::os::windows::io::{AsRawHandle, IntoRawHandle, RawHandle};
 
@@ -742,6 +742,14 @@ impl AsRawFd for File {
     #[inline]
     fn as_raw_fd(&self) -> RawFd {
         self.inner.as_raw_fd()
+    }
+}
+
+#[cfg(unix)]
+impl AsFd for File {
+    #[inline]
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.inner.as_fd()
     }
 }
 

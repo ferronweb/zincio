@@ -18,9 +18,9 @@ use std::mem::ManuallyDrop;
 use std::mem::MaybeUninit;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs, UdpSocket as StdUdpSocket};
 #[cfg(unix)]
-use std::os::fd::{AsRawFd, IntoRawFd, RawFd};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, IntoRawFd, RawFd};
 #[cfg(windows)]
-use std::os::windows::io::{AsRawSocket, IntoRawSocket, RawSocket};
+use std::os::windows::io::{AsRawSocket, AsSocket, BorrowedSocket, IntoRawSocket, RawSocket};
 use std::time::Duration;
 
 use mio::Interest;
@@ -710,6 +710,14 @@ impl AsRawFd for UdpSocket {
 }
 
 #[cfg(unix)]
+impl AsFd for UdpSocket {
+    #[inline]
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.inner.as_fd()
+    }
+}
+
+#[cfg(unix)]
 impl IntoRawFd for UdpSocket {
     #[inline]
     fn into_raw_fd(self) -> RawFd {
@@ -722,6 +730,14 @@ impl AsRawSocket for UdpSocket {
     #[inline]
     fn as_raw_socket(&self) -> RawSocket {
         self.inner.as_raw_socket()
+    }
+}
+
+#[cfg(windows)]
+impl AsSocket for UdpSocket {
+    #[inline]
+    fn as_socket(&self) -> BorrowedSocket<'_> {
+        self.inner.as_socket()
     }
 }
 

@@ -13,7 +13,7 @@
 use std::future::poll_fn;
 use std::io;
 use std::mem::ManuallyDrop;
-use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd, RawFd};
 use std::os::unix::net::{
     SocketAddr, UnixListener as StdUnixListener, UnixStream as StdUnixStream,
 };
@@ -117,6 +117,13 @@ impl AsRawFd for UnixListener {
     #[inline]
     fn as_raw_fd(&self) -> RawFd {
         self.inner.as_raw_fd()
+    }
+}
+
+impl AsFd for UnixListener {
+    #[inline]
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.inner.as_fd()
     }
 }
 
