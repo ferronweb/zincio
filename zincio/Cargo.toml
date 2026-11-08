@@ -1,6 +1,6 @@
 [package]
 name = "zincio"
-version = "0.2.26"
+version = "0.2.27"
 edition = "2021"
 authors = ["Dorian Niemiec <dorian@ferron.sh>"]
 description = "A high-performance, cross-platform asynchronous runtime for Rust"
@@ -51,7 +51,16 @@ io-uring = "0.6"
 [dev-dependencies]
 
 [features]
-default = ["fs", "splice", "time", "pipe", "stdio", "signal", "process", "blocking-default"]
+default = [
+    "fs",
+    "splice",
+    "time",
+    "pipe",
+    "stdio",
+    "signal",
+    "process",
+    "blocking-default",
+]
 fs = []
 splice = []
 pipe = []
@@ -68,4 +77,9 @@ pedantic = "warn"
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 default-target = "x86_64-unknown-linux-gnu"
-targets = ["x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-pc-windows-msvc", "x86_64-unknown-freebsd"]
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-freebsd",
+]

@@ -853,7 +853,7 @@ checksum = "e13084392c5e4bc371903e2935a5eaeed24905a7511356b883835e18a78f6879"
 
 [[package]]
 name = "zincio"
-version = "0.2.26"
+version = "0.2.27"
 dependencies = [
  "async-channel",
  "crossbeam-queue",
@@ -885,7 +885,7 @@ dependencies = [
 
 [[package]]
 name = "zincio-hyper"
-version = "0.2.26"
+version = "0.2.27"
 dependencies = [
  "hyper",
  "tokio",
@@ -894,7 +894,7 @@ dependencies = [
 
 [[package]]
 name = "zincio-quinn"
-version = "0.2.26"
+version = "0.2.27"
 dependencies = [
  "quinn",
  "zincio",
