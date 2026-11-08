@@ -843,6 +843,42 @@ mod tests {
         });
     }
 
+    /// `send_to` on `io_uring` goes through `SendMsg`, which reads the whole `msghdr`.
+    #[cfg(target_os = "linux")]
+    #[cfg_attr(miri, ignore)]
+    #[test]
+    fn udp_send_to_works_on_io_uring() {
+        let Ok(driver) = AnyDriver::new_uring() else {
+            return;
+        };
+        let runtime = crate::executor::Runtime::new(driver);
+        runtime.block_on(async {
+            let address = "127.0.0.1:0"
+                .parse::<SocketAddr>()
+                .expect("address should parse");
+            let Some(server) = try_bind_udp(address) else {
+                return;
+            };
+            let Some(client) = try_bind_udp(address) else {
+                return;
+            };
+            let server_addr = server.local_addr().expect("server local_addr should work");
+            let client_addr = client.local_addr().expect("client local_addr should work");
+
+            let sent = client
+                .send_to(b"ping".to_vec(), server_addr)
+                .await
+                .0
+                .expect("send_to should succeed");
+            assert_eq!(sent, 4);
+
+            let (data, buf) = server.recv_from(vec![0u8; 16]).await;
+            let (read, from) = data.expect("recv_from should succeed");
+            assert_eq!(&buf[..read], b"ping");
+            assert_eq!(from, client_addr);
+        });
+    }
+
     #[cfg_attr(miri, ignore)]
     #[test]
     fn udp_send_recv_and_peek_variants_work() {
