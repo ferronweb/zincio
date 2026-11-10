@@ -218,54 +218,6 @@ impl UringDriver {
         self.push_entry(&entry)
     }
 
-    /// Submits and waits for one completion without the wait counting as I/O wait.
-    ///
-    /// A thread waiting on the ring is idle, but the kernel charges a wait with any
-    /// request in flight (an armed poll, the interrupt eventfd's read) as I/O wait, so
-    /// an idle runtime shows as I/O pressure (PSI) and iowait CPU time.
-    /// `IORING_ENTER_NO_IOWAIT` turns that off; the crate's `submit_*` helpers cannot
-    /// pass it, so this enters directly.
-    #[cfg(io_uring_no_iowait)]
-    #[inline]
-    fn submit_and_wait_no_iowait(
-        ring: &mut IoUring,
-        timeout: Option<Duration>,
-    ) -> Result<usize, io::Error> {
-        use io_uring::EnterFlags;
-
-        let to_submit =
-            u32::try_from(ring.submission().len()).expect("submission queue length fits in u32");
-        let submitter = ring.submitter();
-        let flags = EnterFlags::GETEVENTS | EnterFlags::NO_IOWAIT;
-        if let Some(timeout) = timeout {
-            let timespec = timeout.into();
-            let args = SubmitArgs::new().timespec(&timespec);
-            // SAFETY: `args` outlives the call, and the submission queue holds
-            // `to_submit` valid entries.
-            unsafe {
-                submitter.enter(
-                    to_submit,
-                    1,
-                    (flags | EnterFlags::EXT_ARG).bits(),
-                    Some(&args),
-                )
-            }
-        } else {
-            // SAFETY: the submission queue holds `to_submit` valid entries; no
-            // argument is passed.
-            unsafe { submitter.enter::<libc::sigset_t>(to_submit, 1, flags.bits(), None) }
-        }
-    }
-
-    #[cfg(not(io_uring_no_iowait))]
-    #[inline]
-    fn submit_and_wait_no_iowait(
-        _ring: &mut IoUring,
-        _timeout: Option<Duration>,
-    ) -> Result<usize, io::Error> {
-        unreachable!("no_iowait is false without IORING_ENTER_NO_IOWAIT")
-    }
-
     #[inline]
     fn collect_completions(
         &self,
@@ -284,7 +236,12 @@ impl UringDriver {
                 let submit_result = if wait_for_one {
                     if let Some(timeout) = timeout {
                         if self.no_iowait {
-                            Self::submit_and_wait_no_iowait(&mut ring, Some(timeout))
+                            // Linux 6.15+ (it's always newer than Linux 5.11)
+                            ring.submitter().submit_with_args_and_flags(
+                                1,
+                                &SubmitArgs::new().timespec(&timeout.into()),
+                                io_uring::EnterFlags::NO_IOWAIT,
+                            )
                         } else if self.ext_arg {
                             // Linux 5.11+
                             ring.submitter()
@@ -330,7 +287,12 @@ impl UringDriver {
                             ring.submit_and_wait(1)
                         }
                     } else if self.no_iowait {
-                        Self::submit_and_wait_no_iowait(&mut ring, None)
+                        // equivalent to submit_and_wait with NO_IOWAIT enter flag
+                        ring.submitter().submit_with_args_and_flags(
+                            1,
+                            &SubmitArgs::new(),
+                            io_uring::EnterFlags::NO_IOWAIT,
+                        )
                     } else {
                         ring.submit_and_wait(1)
                     }

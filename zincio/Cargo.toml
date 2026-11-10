@@ -43,7 +43,7 @@ windows-sys = { version = "0.61.2", features = [
 ] }
 
 [target.'cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "riscv64", target_arch = "loongarch64", target_arch = "powerpc64")))'.dependencies]
-io-uring = "0.7.13"
+io-uring = "0.7.16"
 
 [target.'cfg(all(target_os = "linux", not(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "riscv64", target_arch = "loongarch64", target_arch = "powerpc64"))))'.dependencies]
 io-uring = "0.6"
