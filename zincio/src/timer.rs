@@ -160,8 +160,28 @@ impl TimingWheel {
 
                 self.entries.remove(slab_index);
                 self.refresh_min_expiration();
+                self.compact_expiration_heap();
             }
         }
+    }
+
+    /// Drop the heap entries of cancelled timers once they outnumber the live
+    /// ones. The lazy cleanup only pops stale entries from the top, so without
+    /// this a cancelled timer stays in the heap until its deadline would have
+    /// passed, and a timer cancelled and resubmitted on every wakeup grows the
+    /// heap without bound. Rebuilding costs O(live) and leaves at least that
+    /// much slack, so a removal stays amortized O(1).
+    #[inline]
+    fn compact_expiration_heap(&mut self) {
+        if self.expiration_heap.len() <= 2 * self.entries.len() + SLOTS_PER_LEVEL {
+            return;
+        }
+        let entries = &self.entries;
+        self.expiration_heap.retain(|&Reverse((_tick, idx, gen))| {
+            entries
+                .get(idx)
+                .is_some_and(|entry| entry.generation == gen)
+        });
     }
 
     /// Advance the timing wheel by the given number of ticks
@@ -788,6 +808,34 @@ mod tests {
         // Advance and check that only 50 timers expire
         let expired = wheel.advance(1000);
         assert_eq!(expired.len(), 50);
+    }
+
+    #[test]
+    fn test_timing_wheel_cancelled_timers_do_not_pile_up() {
+        let mut wheel = TimingWheel::new();
+        let counter = Arc::new(Mutex::new(0));
+
+        // A live timer due soon keeps the heap's top live, so the lazy cleanup
+        // never reaches the cancelled entries below it.
+        let _live = wheel.insert(mock_waker(counter.clone()), 10);
+
+        // A `Sleep` polled again before its deadline cancels and resubmits its
+        // timer: a busy connection with an hour-long timeout does this on every
+        // wakeup.
+        for _ in 0..10_000 {
+            let handle = wheel.insert(mock_waker(counter.clone()), 3_600_000);
+            wheel.remove(handle);
+        }
+
+        assert!(
+            wheel.expiration_heap.len() < 100,
+            "the heap holds {} entries for 1 live timer",
+            wheel.expiration_heap.len()
+        );
+        assert_eq!(
+            wheel.nearest_wakeup(),
+            Some(std::num::NonZeroU64::new(10).unwrap())
+        );
     }
 
     #[test]
