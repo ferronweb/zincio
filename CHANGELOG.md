@@ -4,6 +4,7 @@
 
 **Not yet released**
 
+- Improved memory usage and performance for timer driver ([thank you, @Iaotle](https://github.com/ferronweb/zincio/pull/27))
 - The `io_uring` driver now doesn't cause iowait when possible ([thank you, @Iaotle](https://github.com/ferronweb/zincio/pull/26))
 
 ## `zincio` 0.2.27
