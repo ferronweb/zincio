@@ -487,6 +487,53 @@ mod tests {
         interruptor.interrupt();
     }
 
+    /// Microseconds this process's cgroup has spent with a task waiting on I/O ("some"),
+    /// or `None` without cgroup v2 pressure files.
+    #[cfg(target_os = "linux")]
+    fn cgroup_io_wait_us() -> Option<u64> {
+        let cgroup = std::fs::read_to_string("/proc/self/cgroup").ok()?;
+        let path = cgroup.lines().find_map(|line| line.strip_prefix("0::"))?;
+        let pressure =
+            std::fs::read_to_string(format!("/sys/fs/cgroup{}/io.pressure", path.trim())).ok()?;
+        pressure
+            .lines()
+            .find(|line| line.starts_with("some"))?
+            .split_whitespace()
+            .find_map(|field| field.strip_prefix("total="))?
+            .parse()
+            .ok()
+    }
+
+    /// A ring waiting with a request in flight (here the interrupt eventfd's read) is
+    /// idle, not waiting on I/O: on kernels with `IORING_FEAT_NO_IOWAIT` the wait must
+    /// not show as I/O pressure.
+    #[cfg(io_uring_no_iowait)]
+    #[cfg_attr(miri, ignore)]
+    #[test]
+    fn test_uring_driver_idle_wait_is_not_io_wait() {
+        let Ok(ring) = io_uring::IoUring::new(8) else {
+            return;
+        };
+        if !ring.params().is_feature_no_iowait() {
+            return;
+        }
+        drop(ring);
+        let Some(before) = cgroup_io_wait_us() else {
+            return;
+        };
+        let driver = AnyDriver::new_uring().expect("Failed to create UringDriver");
+        let idle = std::time::Duration::from_millis(500);
+        driver.wait(Some(idle));
+        let after = cgroup_io_wait_us().expect("io.pressure was readable before");
+        // Other processes in the cgroup may wait on I/O meanwhile; this wait alone
+        // would add the whole 500 ms.
+        assert!(
+            after - before < 250_000,
+            "an idle wait counted {} ms of I/O wait",
+            (after - before) / 1000
+        );
+    }
+
     #[test]
     fn test_mock_driver_interrupt_basic() {
         let driver = AnyDriver::new_mock();

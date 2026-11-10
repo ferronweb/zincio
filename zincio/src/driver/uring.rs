@@ -79,6 +79,7 @@ pub struct UringDriver {
     interrupt_buffer: RefCell<Box<[u8; 8]>>,
     pending_submissions: RefCell<bool>,
     ext_arg: bool,
+    no_iowait: bool,
     timespec: RefCell<Box<Timespec>>,
 }
 
@@ -103,6 +104,11 @@ impl UringDriver {
 
         let ring = builder.build(entries)?;
         let ext_arg = ring.params().is_feature_ext_arg();
+        // Linux 6.15+; under SQPOLL the kernel thread submits, and waits are not entered.
+        #[cfg(io_uring_no_iowait)]
+        let no_iowait = ring.params().is_feature_no_iowait() && !ring.params().is_setup_sqpoll();
+        #[cfg(not(io_uring_no_iowait))]
+        let no_iowait = false;
         let driver = Self {
             ring: RefCell::new(ring),
             state: RefCell::new(DriverState {
@@ -113,6 +119,7 @@ impl UringDriver {
             interrupt_buffer: RefCell::new(Box::new([0; 8])),
             pending_submissions: RefCell::new(false),
             ext_arg,
+            no_iowait,
             timespec: RefCell::new(Box::new(Timespec::new())),
         };
 
@@ -211,6 +218,54 @@ impl UringDriver {
         self.push_entry(&entry)
     }
 
+    /// Submits and waits for one completion without the wait counting as I/O wait.
+    ///
+    /// A thread waiting on the ring is idle, but the kernel charges a wait with any
+    /// request in flight (an armed poll, the interrupt eventfd's read) as I/O wait, so
+    /// an idle runtime shows as I/O pressure (PSI) and iowait CPU time.
+    /// `IORING_ENTER_NO_IOWAIT` turns that off; the crate's `submit_*` helpers cannot
+    /// pass it, so this enters directly.
+    #[cfg(io_uring_no_iowait)]
+    #[inline]
+    fn submit_and_wait_no_iowait(
+        ring: &mut IoUring,
+        timeout: Option<Duration>,
+    ) -> Result<usize, io::Error> {
+        use io_uring::EnterFlags;
+
+        let to_submit =
+            u32::try_from(ring.submission().len()).expect("submission queue length fits in u32");
+        let submitter = ring.submitter();
+        let flags = EnterFlags::GETEVENTS | EnterFlags::NO_IOWAIT;
+        if let Some(timeout) = timeout {
+            let timespec = timeout.into();
+            let args = SubmitArgs::new().timespec(&timespec);
+            // SAFETY: `args` outlives the call, and the submission queue holds
+            // `to_submit` valid entries.
+            unsafe {
+                submitter.enter(
+                    to_submit,
+                    1,
+                    (flags | EnterFlags::EXT_ARG).bits(),
+                    Some(&args),
+                )
+            }
+        } else {
+            // SAFETY: the submission queue holds `to_submit` valid entries; no
+            // argument is passed.
+            unsafe { submitter.enter::<libc::sigset_t>(to_submit, 1, flags.bits(), None) }
+        }
+    }
+
+    #[cfg(not(io_uring_no_iowait))]
+    #[inline]
+    fn submit_and_wait_no_iowait(
+        _ring: &mut IoUring,
+        _timeout: Option<Duration>,
+    ) -> Result<usize, io::Error> {
+        unreachable!("no_iowait is false without IORING_ENTER_NO_IOWAIT")
+    }
+
     #[inline]
     fn collect_completions(
         &self,
@@ -228,7 +283,9 @@ impl UringDriver {
             if should_submit {
                 let submit_result = if wait_for_one {
                     if let Some(timeout) = timeout {
-                        if self.ext_arg {
+                        if self.no_iowait {
+                            Self::submit_and_wait_no_iowait(&mut ring, Some(timeout))
+                        } else if self.ext_arg {
                             // Linux 5.11+
                             ring.submitter()
                                 .submit_with_args(1, &SubmitArgs::new().timespec(&timeout.into()))
@@ -272,6 +329,8 @@ impl UringDriver {
 
                             ring.submit_and_wait(1)
                         }
+                    } else if self.no_iowait {
+                        Self::submit_and_wait_no_iowait(&mut ring, None)
                     } else {
                         ring.submit_and_wait(1)
                     }
