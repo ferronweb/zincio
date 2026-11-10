@@ -1,5 +1,11 @@
 # `zincio` change log
 
+## `zincio` UNRELEASED
+
+**Not yet released**
+
+- The `io_uring` driver now doesn't cause iowait when possible ([thank you, @Iaotle](https://github.com/ferronweb/zincio/pull/26))
+
 ## `zincio` 0.2.27
 
 **Released in November 8, 2026**
