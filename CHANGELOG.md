@@ -1,5 +1,11 @@
 # `zincio` change log
 
+## `zincio` 0.2.29
+
+**Released in November 11, 2026**
+
+- Fixed compilation error when using targets for which `io_uring` 0.6 is used instead of `io_uring` 0.7 (Rust crate versions)
+
 ## `zincio` 0.2.28
 
 **Released in November 11, 2026**

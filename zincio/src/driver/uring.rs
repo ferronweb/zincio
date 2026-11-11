@@ -237,11 +237,20 @@ impl UringDriver {
                     if let Some(timeout) = timeout {
                         if self.no_iowait {
                             // Linux 6.15+ (it's always newer than Linux 5.11)
-                            ring.submitter().submit_with_args_and_flags(
+                            #[cfg(io_uring_no_iowait)]
+                            let result = ring.submitter().submit_with_args_and_flags(
                                 1,
                                 &SubmitArgs::new().timespec(&timeout.into()),
                                 io_uring::EnterFlags::NO_IOWAIT,
-                            )
+                            );
+                            #[allow(clippy::diverging_sub_expression)]
+                            #[allow(unused)]
+                            #[cfg(not(io_uring_no_iowait))]
+                            let result =
+                                unreachable!("no_iowait is false without IORING_ENTER_NO_IOWAIT");
+
+                            #[allow(unused)]
+                            result
                         } else if self.ext_arg {
                             // Linux 5.11+
                             ring.submitter()
@@ -287,12 +296,22 @@ impl UringDriver {
                             ring.submit_and_wait(1)
                         }
                     } else if self.no_iowait {
+                        // Linux 6.15+
                         // equivalent to submit_and_wait with NO_IOWAIT enter flag
-                        ring.submitter().submit_with_args_and_flags(
+                        #[cfg(io_uring_no_iowait)]
+                        let result = ring.submitter().submit_with_args_and_flags(
                             1,
                             &SubmitArgs::new(),
                             io_uring::EnterFlags::NO_IOWAIT,
-                        )
+                        );
+                        #[allow(clippy::diverging_sub_expression)]
+                        #[allow(unused)]
+                        #[cfg(not(io_uring_no_iowait))]
+                        let result =
+                            unreachable!("no_iowait is false without IORING_ENTER_NO_IOWAIT");
+
+                        #[allow(unused)]
+                        result
                     } else {
                         ring.submit_and_wait(1)
                     }
