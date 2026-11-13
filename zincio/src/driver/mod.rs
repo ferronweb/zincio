@@ -96,22 +96,13 @@ pub trait Driver {
     /// Waits for the I/O.
     fn wait(&self, timeout: Option<Duration>);
 
-    /// Registers an I/O source and returns its token.
-    fn register_handle(
-        &self,
-        handle: &InnerRawHandle,
-        interest: Interest,
-    ) -> Result<Token, std::io::Error>;
-
     /// Registers an I/O source with the requested mode.
     fn register_handle_with_mode(
         &self,
         handle: &InnerRawHandle,
         interest: Interest,
-        _mode: RegistrationMode,
-    ) -> Result<Token, io::Error> {
-        self.register_handle(handle, interest)
-    }
+        mode: RegistrationMode,
+    ) -> Result<Token, io::Error>;
 
     /// Updates the interest set for a registered I/O source.
     fn reregister_handle(
@@ -285,24 +276,6 @@ impl AnyDriver {
             AnyDriver::Mock(driver) => driver.wait(timeout),
             #[cfg(target_os = "linux")]
             AnyDriver::IoUring(driver) => driver.wait(timeout),
-        }
-    }
-
-    #[allow(dead_code)]
-    #[inline]
-    pub(crate) fn register_handle(
-        &self,
-        handle: &InnerRawHandle,
-        interest: Interest,
-    ) -> Result<Token, std::io::Error> {
-        match self {
-            #[cfg(windows)]
-            AnyDriver::Iocp(driver) => driver.register_handle(handle, interest),
-            #[cfg(unix)]
-            AnyDriver::Mio(driver) => driver.register_handle(handle, interest),
-            AnyDriver::Mock(driver) => driver.register_handle(handle, interest),
-            #[cfg(target_os = "linux")]
-            AnyDriver::IoUring(driver) => driver.register_handle(handle, interest),
         }
     }
 

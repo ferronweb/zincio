@@ -474,15 +474,6 @@ impl Driver for UringDriver {
     }
 
     #[inline]
-    fn register_handle(
-        &self,
-        handle: &InnerRawHandle,
-        interest: Interest,
-    ) -> Result<Token, io::Error> {
-        self.register_handle_with_mode(handle, interest, RegistrationMode::Completion)
-    }
-
-    #[inline]
     fn register_handle_with_mode(
         &self,
         handle: &InnerRawHandle,

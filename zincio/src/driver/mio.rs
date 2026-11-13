@@ -152,10 +152,12 @@ impl Driver for MioDriver {
     }
 
     #[inline]
-    fn register_handle(
+    fn register_handle_with_mode(
         &self,
         handle: &InnerRawHandle,
         interest: Interest,
+        // mio driver does not support completion I/O
+        _mode: super::RegistrationMode,
     ) -> Result<Token, io::Error> {
         let token = {
             let mut state = self.state.borrow_mut();

@@ -43,10 +43,11 @@ impl Driver for MockDriver {
     }
 
     #[inline]
-    fn register_handle(
+    fn register_handle_with_mode(
         &self,
         _handle: &crate::fd_inner::InnerRawHandle,
         _interest: Interest,
+        _mode: super::RegistrationMode,
     ) -> Result<Token, std::io::Error> {
         Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
