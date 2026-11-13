@@ -398,37 +398,23 @@ impl Timer {
 mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
-    use std::task::{RawWaker, RawWakerVTable, Waker};
+    use std::task::Waker;
     use std::time::Duration;
 
+    struct MockWakerInner(Arc<Mutex<u32>>);
+
+    impl std::task::Wake for MockWakerInner {
+        fn wake(self: Arc<Self>) {
+            self.wake_by_ref();
+        }
+
+        fn wake_by_ref(self: &Arc<Self>) {
+            *self.0.lock().unwrap() += 1;
+        }
+    }
+
     fn mock_waker(counter: Arc<Mutex<u32>>) -> Waker {
-        fn clone(data: *const ()) -> RawWaker {
-            let arc = unsafe { Arc::from_raw(data.cast::<Mutex<u32>>()) };
-            let cloned = Arc::clone(&arc);
-            std::mem::forget(arc);
-            RawWaker::new(Arc::into_raw(cloned).cast::<()>(), &VTABLE)
-        }
-        fn wake(data: *const ()) {
-            let arc = unsafe { Arc::from_raw(data.cast::<Mutex<u32>>()) };
-            {
-                let mut lock = arc.lock().unwrap();
-                *lock += 1;
-            }
-            // wake consumes the waker, so drop the Arc here (do not forget)
-        }
-        fn wake_by_ref(data: *const ()) {
-            let counter = unsafe { &*data.cast::<Mutex<u32>>() };
-            let mut lock = counter.lock().unwrap();
-            *lock += 1;
-        }
-        fn drop_waker(data: *const ()) {
-            unsafe { std::mem::drop(Arc::from_raw(data.cast::<Mutex<u32>>())) };
-        }
-
-        static VTABLE: RawWakerVTable = RawWakerVTable::new(clone, wake, wake_by_ref, drop_waker);
-
-        let ptr = Arc::into_raw(counter).cast::<()>();
-        unsafe { Waker::from_raw(RawWaker::new(ptr, &VTABLE)) }
+        Waker::from(Arc::new(MockWakerInner(counter)))
     }
 
     #[test]

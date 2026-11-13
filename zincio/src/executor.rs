@@ -33,7 +33,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+use std::task::{Context, Poll, Waker};
 
 use crossbeam_queue::SegQueue;
 
@@ -210,7 +210,19 @@ impl BlockOnNotify {
     }
 
     #[inline]
-    fn wake_by_ref(&self) {
+    fn waker(self: &Arc<Self>) -> Waker {
+        Waker::from(self.clone())
+    }
+}
+
+impl std::task::Wake for BlockOnNotify {
+    #[inline]
+    fn wake(self: Arc<Self>) {
+        self.wake_by_ref();
+    }
+
+    #[inline]
+    fn wake_by_ref(self: &Arc<Self>) {
         self.ready.store(true, Ordering::Release);
 
         if std::thread::current().id() != self.thread_id
@@ -219,54 +231,6 @@ impl BlockOnNotify {
         {
             self.interruptor.interrupt();
         }
-    }
-
-    #[inline]
-    fn waker(self: &Arc<Self>) -> Waker {
-        // SAFETY: the vtable methods correctly clone/drop the Arc reference count.
-        unsafe {
-            Waker::from_raw(Self::raw_waker(
-                Arc::into_raw(Arc::clone(self)).cast::<()>(),
-            ))
-        }
-    }
-
-    #[inline]
-    unsafe fn raw_waker(ptr: *const ()) -> RawWaker {
-        RawWaker::new(ptr, &Self::VTABLE)
-    }
-
-    const VTABLE: RawWakerVTable = RawWakerVTable::new(
-        Self::raw_waker_clone,
-        Self::raw_waker_wake,
-        Self::raw_waker_wake_by_ref,
-        Self::raw_waker_drop,
-    );
-
-    #[inline]
-    unsafe fn raw_waker_clone(ptr: *const ()) -> RawWaker {
-        let notify = Arc::<Self>::from_raw(ptr.cast::<Self>());
-        let cloned = Arc::clone(&notify);
-        let _ = Arc::into_raw(notify);
-        Self::raw_waker(Arc::into_raw(cloned).cast::<()>())
-    }
-
-    #[inline]
-    unsafe fn raw_waker_wake(ptr: *const ()) {
-        let notify = Arc::<Self>::from_raw(ptr.cast::<Self>());
-        notify.wake_by_ref();
-    }
-
-    #[inline]
-    unsafe fn raw_waker_wake_by_ref(ptr: *const ()) {
-        let notify = Arc::<Self>::from_raw(ptr.cast::<Self>());
-        notify.wake_by_ref();
-        let _ = Arc::into_raw(notify);
-    }
-
-    #[inline]
-    unsafe fn raw_waker_drop(ptr: *const ()) {
-        drop(Arc::<Self>::from_raw(ptr.cast::<Self>()));
     }
 }
 
