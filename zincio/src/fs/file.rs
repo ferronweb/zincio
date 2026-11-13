@@ -27,27 +27,6 @@ use crate::fd_inner::RawOsHandle;
 
 use crate::fs::open_options::OpenOptions;
 
-/// A file handle for asynchronous file I/O operations.
-///
-/// This struct provides async versions of common file operations like reading,
-/// writing, and syncing. It supports both `io_uring` completion-based I/O on Linux
-/// and blocking thread pool fallback for other platforms.
-///
-/// # Examples
-///
-/// ```ignore
-/// use zincio::fs::File;
-///
-/// // Open a file for reading
-/// let file = File::open("hello.txt").await?;
-///
-/// // Read from the file
-/// let mut buf = [0u8; 1024];
-/// let (read, buf) = file.read_at(buf, 0).await;
-/// let read = read?;
-///
-/// println!("Read {} bytes", read);
-/// ```
 enum FileIo {
     Completion(ManuallyDrop<InnerRawHandle>),
     Blocking,

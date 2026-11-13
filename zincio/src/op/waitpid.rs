@@ -37,9 +37,9 @@ enum WaitPidState {
 }
 
 /// An async operation that waits for a child process to exit using Linux's
-/// `pidfd_open(2)`.  The pidfd is registered with the I/O driver so the
-/// executor is woken only when the child actually terminates — no signals,
-/// no busy-polling.
+/// `pidfd_open(2)`. The pidfd is registered with the I/O driver so the
+/// executor is woken only when the child actually terminates, no signals
+/// nor busy-polling.
 pub struct WaitPidOp {
     state: WaitPidState,
 }
@@ -143,7 +143,7 @@ impl Op for WaitPidOp {
                     if n < 0 {
                         let err = io::Error::last_os_error();
                         if err.kind() == io::ErrorKind::WouldBlock {
-                            // Not ready yet — register for readability and pend.
+                            // Not ready yet, so register for readability and pend.
                             if let Err(submit_err) =
                                 driver.submit_poll(handle, cx.waker().clone(), Interest::READABLE)
                             {
@@ -151,7 +151,7 @@ impl Op for WaitPidOp {
                             }
                             return Poll::Pending;
                         }
-                        // EBADF or similar — try reaping anyway
+                        // EBADF or similar, but try reaping anyway
                     }
 
                     let pid = *pid;
@@ -218,7 +218,7 @@ impl Op for WaitPidOp {
                         self.state = WaitPidState::Polling { pid, pidfd, handle };
                         return Poll::Pending;
                     }
-                    // Other error — try reaping anyway.
+                    // Other error, but try reaping anyway.
                 }
 
                 let status = Self::reap(pid);

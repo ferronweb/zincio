@@ -30,7 +30,6 @@ impl ZombieReaper {
     #[inline]
     pub(crate) async fn wait(&self, mut child: std::process::Child) -> io::Result<ExitStatus> {
         if let Some(reaper_send) = current_zombie_reaper().await {
-            // Send the child to the zombie reaper to wait on it asynchronously.
             let (sender, recver) = oneshot::async_channel();
             let _ = reaper_send.send((child, Some(sender))).await;
             recver
@@ -51,7 +50,6 @@ impl ZombieReaper {
         if let Poll::Ready(Some(reaper_send)) =
             Box::pin(current_zombie_reaper()).poll_unpin(&mut Context::from_waker(Waker::noop()))
         {
-            // Send the child to the zombie reaper, so it can wait on it asynchronously.
             let (sender, _) = oneshot::async_channel();
             let _ = reaper_send.try_send((child, Some(sender)));
         } else {
@@ -167,7 +165,7 @@ async fn zombie_reaper_fn(rx: async_channel::Receiver<ZombieReaperMessage>) {
 #[cfg(target_os = "linux")]
 #[inline]
 fn pidfd_available() -> bool {
-    // Try opening a pidfd for our own PID — it will succeed on 5.3+ and fail
+    // Try opening a pidfd for our own PID, it will succeed on 5.3+ and fail
     // with ENOSYS on older kernels.
     let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, libc::getpid(), 0 as libc::c_uint) };
     if fd >= 0 {
@@ -177,9 +175,9 @@ fn pidfd_available() -> bool {
         true
     } else {
         let err = io::Error::last_os_error();
-        // ENOSYS → syscall not available; anything else means it *is* available
-        // but the specific call failed for another reason (shouldn't happen for
-        // our own PID, but be safe).
+        // ENOSYS means syscall not available.
+        //
+        // Anything else means it is, but it failed for another reason.
         err.raw_os_error() != Some(libc::ENOSYS)
     }
 }
@@ -202,7 +200,7 @@ async fn zombie_reaper_fn_linux_pidfd(rx: async_channel::Receiver<ZombieReaperMe
     loop {
         let msg = rx.recv().await;
         let Ok((mut child, sender)) = msg else {
-            // Channel closed — runtime is shutting down.
+            // Channel closed, runtime is shutting down.
             break;
         };
 

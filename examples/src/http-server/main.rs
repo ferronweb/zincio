@@ -15,7 +15,7 @@ fn main() -> Result<(), std::io::Error> {
     let runtime = RuntimeBuilder::new().build()?;
 
     // A basic single-threaded HTTP server (using `hyper`) example
-    // In production, you would typically use a multi-threaded runtime and offload blocking I/O.
+    // In production, you would typically use a multiple threads and offload blocking I/O.
     runtime.block_on(async {
         let listener = zincio::net::TcpListener::bind("127.0.0.1:8080")?;
 

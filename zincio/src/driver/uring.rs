@@ -257,27 +257,18 @@ impl UringDriver {
                                 .submit_with_args(1, &SubmitArgs::new().timespec(&timeout.into()))
                         } else {
                             // Linux 5.4+
+
+                            // We need to keep the timespec alive until the timeout is triggered, to mitigate use-after-free
                             let timespec = timeout.into();
                             let mut ts_box = self.timespec.borrow_mut();
                             **ts_box = timespec;
                             let timespec_ptr = &raw const **ts_box;
 
-                            // We must drop the borrow here so we can call push_entry (which borrows ring, but doesn't borrow timespec).
-                            // BUT push_entry borrows ring. We currently have `ring` borrowed mutably!
-                            // We need to drop `ring` borrow before calling `push_entry`?
-                            // `collect_completions` has `let mut ring = self.ring.borrow_mut();` at the top of this block.
-                            // If we call `self.push_entry`, it tries `self.ring.borrow_mut()`, which panics!
-                            //
-                            // FIX: We cannot call `self.push_entry` while holding `ring` borrow.
-                            // We must push manually using the already borrowed `ring`.
-
-                            // Duplicate logic of push_entry but using existing `ring` ref?
-                            // Or just push directly to `ring.submission()`.
-
                             let entry = opcode::Timeout::new(timespec_ptr)
                                 .build()
                                 .user_data(u64::MAX - 1);
 
+                            // Manually push to submission queue, since `self.push_entry` cannot be used while holding `ring` borrow.
                             if ring.submission().is_full() {
                                 // We are holding borrow, so we can't call methods that borrow.
                                 // But `ring.submit()` is on `IoUring`.
@@ -325,11 +316,6 @@ impl UringDriver {
             }
         }
 
-        // Drain any new completions produced by the submit above.
-        // Use a SmallVec to keep the common case (≤16 wakes) on-stack and
-        // reuse the allocation; wake outside the RefCell borrows so task
-        // wakes (which may re-enter the driver via submit_poll) don't
-        // contend on the borrow or cause allocator jitter while it is held.
         let mut wakers: SmallVec<[Waker; 16]> = SmallVec::new();
         let need_interrupt = {
             let mut ring = self.ring.borrow_mut();
@@ -656,19 +642,15 @@ impl Driver for UringDriver {
         let vacant_completion = state.completions.vacant_entry();
         let token = vacant_completion.key();
 
-        // Build the SQE. If this fails, return the error.
         let entry = match op.build_completion_entry(Self::encode_completion_key(token)) {
             Ok(entry) => entry,
             Err(err) => return CompletionIoResult::SubmitErr(err),
         };
 
-        // Push the SQE into the submission queue. If this fails, undo the inflight
-        // flag and clear waiters on the registration.
         if let Err(err) = self.push_entry(&entry) {
             return CompletionIoResult::SubmitErr(err);
         }
 
-        // Store the operation in the completions slab.
         vacant_completion.insert(Completion {
             waiter: Some(waker),
             completed: None,

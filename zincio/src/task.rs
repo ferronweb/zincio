@@ -10,10 +10,8 @@ use futures_util::future::LocalBoxFuture;
 
 use crate::driver::AnyInterruptor;
 
-/// Inline capacity for the `next_task` fast-path queue. Burst Wakes from
-/// `io_uring` completions or hyper h2 stream wakes often hit 4-8 tasks at
-/// once; keeping them in a small inline `VecDeque` avoids contending on the
-/// main `UnsafeCell`<VecDeque> and reduces p99 jitter.
+/// Inline capacity for the `next_task` fast-path queue, used to optimize the
+/// runtime overhead for short task bursts.
 pub(crate) const NEXT_TASK_INLINE_CAP: usize = 8;
 
 pub struct Task {

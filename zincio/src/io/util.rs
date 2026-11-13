@@ -136,7 +136,6 @@ where
 {
     async fn read<B: crate::io::IoBufMut>(&mut self, buf: B) -> (Result<usize, io::Error>, B) {
         let mut guard = self.inner.lock().await;
-        // Forward the call to the underlying object.
         (*guard).read(buf).await
     }
 }

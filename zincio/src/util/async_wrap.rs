@@ -114,7 +114,6 @@ where
         this.inner = Some(inner);
         match read {
             Ok(n) => {
-                // Put buf_read into buf
                 let copy_len = n.min(buf.remaining());
                 buf.put_slice(&buf_read[..copy_len]);
                 if copy_len < n {
@@ -151,7 +150,8 @@ where
                 )));
             };
             let fut = Box::pin(async move {
-                // write_all
+                // Equivalent to write_all (since we don't have a way to return the
+                // remaining bytes)
                 let mut buf = buf;
                 let mut total_written = 0;
                 while !buf.is_empty() {
@@ -203,7 +203,7 @@ where
 
     #[inline]
     fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        // No-op
+        // `zincio::io::AsyncWrite` doesn't have an equivalent `shutdown` method...
         Poll::Ready(Ok(()))
     }
 }

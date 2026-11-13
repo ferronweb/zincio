@@ -99,7 +99,7 @@ impl TimingWheel {
     }
 
     /// Lazily refresh the minimum expiration tick by popping stale entries
-    /// from the binary heap. Amortized O(1) — only the heap top is inspected.
+    /// from the binary heap. Amortized O(1), because only the heap top is inspected.
     #[inline]
     fn refresh_min_expiration(&mut self) {
         while let Some(&Reverse((_tick, idx, gen))) = self.expiration_heap.peek() {
@@ -200,8 +200,6 @@ impl TimingWheel {
         // This must happen before processing level 0 slots
         self.cascade_all_levels(&mut expired_wakers);
 
-        // Process all level 0 slots that fall within the range
-        // Level 0 has 64 slots, each representing 1ms
         let start_slot =
             usize::try_from(start_tick).expect("start_tick fits in usize") & (SLOTS_PER_LEVEL - 1);
         let end_slot = usize::try_from(self.current_tick).expect("current_tick fits in usize")
@@ -227,7 +225,6 @@ impl TimingWheel {
             }
         }
 
-        // Refresh the minimum expiration time after processing.
         // The binary heap lazily cleans stale entries in O(log n).
         self.refresh_min_expiration();
 
@@ -244,7 +241,6 @@ impl TimingWheel {
 
     /// Cascade all timers from a specific level down to lower levels
     fn cascade_level(&mut self, level: usize, expired_wakers: &mut Vec<Waker>) {
-        // Take all slots at this level
         for slot in 0..SLOTS_PER_LEVEL {
             let timers_to_cascade: Vec<usize> = std::mem::take(&mut self.wheels[level][slot]);
 
@@ -375,13 +371,10 @@ impl Timer {
     #[inline]
     pub fn spin_and_get_deadline(&self) -> (Option<Duration>, bool) {
         if self.wheel.borrow().is_empty() {
-            // Common case for request handlers without pending sleeps (e.g. an
-            // http server with keepalive but no timeouts): skip the timing
-            // wheel entirely. We still refresh `instant` to keep the deadline
-            // mapping correct for a future `submit`, but that is a single
-            // `clock_gettime` instead of the two the full path performs. This
-            // runs on every scheduler loop iteration, so shaving the syscall
-            // here removes per-batch timer overhead.
+            // Just reset the instant in the fast path with empty timer wheel,
+            // to bypass the timing wheel in the next call.
+            //
+            // Also, this would prevent wasting the cursor.
             *self.instant.borrow_mut() = Instant::now();
             return (None, false);
         }
@@ -456,10 +449,8 @@ mod tests {
         let counter = Arc::new(Mutex::new(0));
         let waker = mock_waker(counter.clone());
 
-        // Submit a timer for 50 ms
         let _handle = timer.submit(Instant::now() + Duration::from_millis(50), waker);
 
-        // The deadline should be Some and close to 50 ms
         let (deadline, _woken_up) = timer.spin_and_get_deadline();
         assert!(deadline.is_some());
         let ms = deadline.unwrap().as_millis();
@@ -475,13 +466,11 @@ mod tests {
         let counter = Arc::new(Mutex::new(0));
         let waker = mock_waker(counter.clone());
 
-        // Submit a timer and then cancel it
         let handle = timer
             .submit(Instant::now() + Duration::from_millis(100), waker)
             .expect("Failed to submit timer");
         timer.cancel(handle);
 
-        // After cancel, deadline should be None
         let (deadline, _woken_up) = timer.spin_and_get_deadline();
         assert!(deadline.is_none());
     }
@@ -500,7 +489,6 @@ mod tests {
         let counter = Arc::new(Mutex::new(0));
         let waker = mock_waker(counter.clone());
 
-        // Insert timer for 10 ticks
         let _handle = wheel.insert(waker, 10);
         assert!(!wheel.is_empty());
         assert_eq!(
@@ -508,12 +496,10 @@ mod tests {
             Some(std::num::NonZeroU64::new(10).unwrap())
         );
 
-        // Advance to tick 9 - should not expire
         let expired = wheel.advance(9);
         assert!(expired.is_empty());
         assert_eq!(wheel.now(), 9);
 
-        // Advance 1 more tick - should expire
         let expired = wheel.advance(1);
         assert_eq!(expired.len(), 1);
         assert!(wheel.is_empty());
@@ -526,13 +512,11 @@ mod tests {
         let counter = Arc::new(Mutex::new(0));
         let waker = mock_waker(counter.clone());
 
-        // Insert timer that's already expired (expiration <= current_tick)
         let _handle = wheel.insert(waker, 0);
         // Note: nearest_wakeup returns None for tick 0 because NonZeroU64 can't represent 0
         // But the timer is still in the wheel
         assert!(!wheel.is_empty());
 
-        // Advance 1 tick - should expire immediately
         let expired = wheel.advance(1);
         assert_eq!(expired.len(), 1);
         assert!(wheel.is_empty());
@@ -562,11 +546,10 @@ mod tests {
         let first_handle = wheel.insert(waker, 100);
         wheel.remove(first_handle);
 
-        // Re-insert with same slab_index but different generation
+        // Same slab_index but different generation
         let waker2 = mock_waker(counter.clone());
         let second_handle = wheel.insert(waker2, 200);
 
-        // Old handle should not cancel the new timer
         wheel.remove(first_handle);
         assert!(!wheel.is_empty());
         assert_eq!(
@@ -574,7 +557,6 @@ mod tests {
             Some(std::num::NonZeroU64::new(200).unwrap())
         );
 
-        // New handle should work
         wheel.remove(second_handle);
         assert!(wheel.is_empty());
     }
@@ -586,7 +568,6 @@ mod tests {
         let counter2 = Arc::new(Mutex::new(0));
         let counter3 = Arc::new(Mutex::new(0));
 
-        // Insert 3 timers for the same expiration tick
         let _h1 = wheel.insert(mock_waker(counter1.clone()), 50);
         let _h2 = wheel.insert(mock_waker(counter2.clone()), 50);
         let _h3 = wheel.insert(mock_waker(counter3.clone()), 50);
@@ -596,16 +577,13 @@ mod tests {
             Some(std::num::NonZeroU64::new(50).unwrap())
         );
 
-        // Advance to expiration
         let expired = wheel.advance(50);
         assert_eq!(expired.len(), 3);
 
-        // Wake the expired timers
         for waker in expired {
             waker.wake();
         }
 
-        // All wakers should have been called
         assert_eq!(*counter1.lock().unwrap(), 1);
         assert_eq!(*counter2.lock().unwrap(), 1);
         assert_eq!(*counter3.lock().unwrap(), 1);
@@ -630,19 +608,17 @@ mod tests {
             Some(std::num::NonZeroU64::new(10).unwrap())
         );
 
-        // Advance to first expiration
+        // 4900 + 90 + 10 = 5000
         let expired = wheel.advance(10);
         assert_eq!(expired.len(), 1);
         expired.into_iter().for_each(std::task::Waker::wake);
         assert_eq!(*counter1.lock().unwrap(), 1);
 
-        // Advance to second expiration (90 more ticks)
         let expired = wheel.advance(90);
         assert_eq!(expired.len(), 1);
         expired.into_iter().for_each(std::task::Waker::wake);
         assert_eq!(*counter2.lock().unwrap(), 1);
 
-        // Advance to third expiration (4900 more ticks)
         let expired = wheel.advance(4900);
         assert_eq!(expired.len(), 1);
         expired.into_iter().for_each(std::task::Waker::wake);
@@ -655,10 +631,8 @@ mod tests {
         let counter = Arc::new(Mutex::new(0));
         let waker = mock_waker(counter.clone());
 
-        // Insert timer for 1000 ticks
         let _handle = wheel.insert(waker, 1000);
 
-        // Advance all at once (should be efficient, not 1000 iterations)
         let expired = wheel.advance(1000);
         assert_eq!(expired.len(), 1);
         assert_eq!(wheel.now(), 1000);
@@ -675,7 +649,6 @@ mod tests {
         // Insert timer that wraps around
         let _h2 = wheel.insert(mock_waker(counter2.clone()), 65);
 
-        // Advance past wrap point
         let expired = wheel.advance(65);
         assert_eq!(expired.len(), 2);
     }
@@ -685,7 +658,6 @@ mod tests {
         let mut wheel = TimingWheel::new();
         let counter = Arc::new(Mutex::new(0));
 
-        // Insert timers in non-sorted order
         let _h1 = wheel.insert(mock_waker(counter.clone()), 100);
         assert_eq!(
             wheel.nearest_wakeup(),
@@ -704,9 +676,7 @@ mod tests {
             Some(std::num::NonZeroU64::new(50).unwrap())
         );
 
-        // Expire the 50 tick timer
         wheel.advance(50);
-        // Now 100 should be the nearest
         assert_eq!(
             wheel.nearest_wakeup(),
             Some(std::num::NonZeroU64::new(100).unwrap())
@@ -759,7 +729,6 @@ mod tests {
         // Insert timer at level 2 (4096+)
         let _handle = wheel.insert(mock_waker(counter.clone()), 5000);
 
-        // Advance past the expiration - cascade should bring it down through levels
         let expired = wheel.advance(5000);
         assert_eq!(expired.len(), 1);
     }
@@ -770,7 +739,6 @@ mod tests {
         let mut handles = Vec::new();
         let counter = Arc::new(Mutex::new(0));
 
-        // Insert 100 timers at various intervals
         for i in 1..=100 {
             let waker = mock_waker(counter.clone());
             let handle = wheel.insert(waker, i * 10);
@@ -782,14 +750,12 @@ mod tests {
             Some(std::num::NonZeroU64::new(10).unwrap())
         );
 
-        // Cancel every other timer
         for (i, handle) in handles.iter().enumerate() {
             if i % 2 == 0 {
                 wheel.remove(*handle);
             }
         }
 
-        // Advance and check that only 50 timers expire
         let expired = wheel.advance(1000);
         assert_eq!(expired.len(), 50);
     }
@@ -828,21 +794,17 @@ mod tests {
         let counter = Arc::new(Mutex::new(0));
         let waker = mock_waker(counter.clone());
 
-        // Insert timer for 100 ticks
         let _handle = wheel.insert(waker, 100);
 
-        // Advance only 50 ticks - timer should be re-inserted at appropriate level
         let expired = wheel.advance(50);
         assert!(expired.is_empty());
         assert!(!wheel.is_empty());
 
-        // The timer should still be tracked
         assert_eq!(
             wheel.nearest_wakeup(),
             Some(std::num::NonZeroU64::new(100).unwrap())
         );
 
-        // Advance remaining 50 ticks
         let expired = wheel.advance(50);
         assert_eq!(expired.len(), 1);
     }

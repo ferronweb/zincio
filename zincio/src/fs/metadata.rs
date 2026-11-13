@@ -218,7 +218,7 @@ impl Metadata {
     pub fn st_nlink(&self) -> u64 {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
-            MetadataInner::Statx(st) => u64::from(st.stx_nlink), // u32 → u64
+            MetadataInner::Statx(st) => u64::from(st.stx_nlink), // u32 -> u64
             MetadataInner::Std(st) => st.st_nlink(),
         }
     }
@@ -248,10 +248,6 @@ impl Metadata {
     }
 
     /// Returns the device ID that this file represents (if it is a special one).
-    ///
-    /// **Note:** Not available via `statx` — the `statx` syscall does not
-    /// return device information. This method is only available on the
-    /// standard `Metadata` variant (non-Linux or non-io_uring paths).
     #[cfg(target_os = "linux")]
     #[inline]
     #[must_use]
@@ -294,7 +290,7 @@ impl Metadata {
     pub fn st_atime_nsec(&self) -> i64 {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
-            MetadataInner::Statx(st) => i64::from(st.stx_atime.tv_nsec), // u32 → i64
+            MetadataInner::Statx(st) => i64::from(st.stx_atime.tv_nsec), // u32 -> i64
             MetadataInner::Std(md) => md.st_atime_nsec(),
         }
     }
@@ -318,7 +314,7 @@ impl Metadata {
     pub fn st_mtime_nsec(&self) -> i64 {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
-            MetadataInner::Statx(st) => i64::from(st.stx_mtime.tv_nsec), // u32 → i64
+            MetadataInner::Statx(st) => i64::from(st.stx_mtime.tv_nsec), // u32 -> i64
             MetadataInner::Std(md) => md.st_mtime_nsec(),
         }
     }
@@ -342,7 +338,7 @@ impl Metadata {
     pub fn st_ctime_nsec(&self) -> i64 {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
-            MetadataInner::Statx(st) => i64::from(st.stx_ctime.tv_nsec), // u32 → i64
+            MetadataInner::Statx(st) => i64::from(st.stx_ctime.tv_nsec), // u32 -> i64
             MetadataInner::Std(md) => md.st_ctime_nsec(),
         }
     }
@@ -354,7 +350,7 @@ impl Metadata {
     pub fn st_blksize(&self) -> u64 {
         match &self.inner {
             #[cfg(all(target_os = "linux", any(target_env = "gnu", musl_v1_2_3)))]
-            MetadataInner::Statx(st) => u64::from(st.stx_blksize), // u32 → u64
+            MetadataInner::Statx(st) => u64::from(st.stx_blksize), // u32 -> u64
             MetadataInner::Std(md) => md.st_blksize(),
         }
     }

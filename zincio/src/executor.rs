@@ -22,7 +22,7 @@
 //! ```
 //!
 //! # Implementation notes
-//! - The runtime is single-threaded and uses a work-stealing queue.
+//! - The runtime is single-threaded.
 //! - Tasks are polled in batches for better performance.
 //! - The runtime supports timers, blocking pools, and file I/O offloading via features.
 
@@ -105,10 +105,8 @@ where
     }
 }
 
-/// Detached task wrapper: polls an inner future to completion and drops
-/// the output. No `JoinState` allocation, no wake propagation. Used for
-/// fire-and-forget http connection handlers where the handle is never
-/// awaited. Saves one Rc+RefCell alloc per connection (~10k RPS).
+/// Detached task wrapper, which saves one Rc+RefCell alloc per spawned tasks
+/// for tasks that do not need to be joined.
 struct DetachedFuture<F> {
     future: F,
 }
@@ -402,7 +400,7 @@ where
 
 /// Spawn a detached task on the current runtime without a `JoinHandle`.
 ///
-/// Use this for fire-and-forget handlers (e.g. per-connection http tasks)
+/// Use this for fire-and-forget handlers (like per-connection http tasks)
 /// where the handle is never awaited. Saves one `Rc<RefCell<JoinState>>`
 /// allocation and atomic wake per connection.
 ///
@@ -623,10 +621,7 @@ impl RuntimeInner {
         }
     }
 
-    /// Drain ready tasks into the given batch. Priority: inline `next_task` ->
-    /// `remote_queue` -> main queue. This keeps burst wakes from `io_uring`
-    /// completions on the fast path and avoids contention on the main
-    /// `UnsafeCell` queue, cutting p99 jitter.
+    /// Drain ready tasks into the given batch.
     #[inline]
     fn drain_ready(&self, batch: &mut Vec<Arc<Task>>, mut budget: usize) {
         if budget != 0 {
@@ -821,9 +816,7 @@ impl Runtime {
             }
 
             // Opportunistic timer spin: wakes timers before draining so they
-            // are included in the same batch. This avoids one-iteration starvation
-            // that previously gated spin on batch.len()>64, hurting p99 for
-            // request/keepalive timeouts under load.
+            // are included in the same batch.
             #[cfg(feature = "time")]
             if let Some(timer) = inner.timer.as_ref() {
                 let _ = timer.spin_and_get_deadline();
