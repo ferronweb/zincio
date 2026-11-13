@@ -106,7 +106,7 @@ impl Sleep {
         // If there was an outstanding handle, cancel it so the timer won't
         // keep the old waker alive.
         if let Some(handle) = self.handle.take() {
-            if let Some(timer_rc) = current_timer() {
+            if let Some(timer_rc) = self.timer.clone().or_else(current_timer) {
                 timer_rc.cancel(handle);
             }
         }
