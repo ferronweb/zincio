@@ -1,5 +1,11 @@
 # `zincio` change log
 
+## `zincio` UNRELEASED
+
+**Not yet released**
+
+- Fixed beyond-EOF (`ERROR_HANDLE_EOF`) file read errors on the IOCP driver on Windows
+
 ## `zincio` 0.2.29
 
 **Released in November 11, 2026**

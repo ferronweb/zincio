@@ -151,7 +151,8 @@ impl<B: IoBufMut> Op for ReadOp<'_, B> {
         cx: &mut Context<'_>,
         driver: &AnyDriver,
     ) -> Poll<io::Result<Self::Output>> {
-        let result = if let Some(completion_token) = self.completion_token {
+        #[allow(unused_mut)] // Has to be for Windows
+        let mut result = if let Some(completion_token) = self.completion_token {
             if let Some(result) = driver.get_completion_result(completion_token) {
                 self.completion_token = None;
                 result
@@ -171,17 +172,11 @@ impl<B: IoBufMut> Op for ReadOp<'_, B> {
                 CompletionIoResult::SubmitErr(err) => return Poll::Ready(Err(err)),
             }
         };
+        #[cfg(windows)]
+        if -result == ERROR_HANDLE_EOF as i32 {
+            result = 0; // Treat it as nothing read
+        }
         if result < 0 {
-            #[cfg(windows)]
-            if -result == ERROR_HANDLE_EOF as i32 {
-                let buf = self
-                    .buf
-                    .as_mut()
-                    .expect("read op buffer must be present while polling")
-                    .as_mut();
-                unsafe { buf.set_buf_init(0) };
-                return Poll::Ready(Ok(0));
-            }
             return Poll::Ready(Err(io::Error::from_raw_os_error(-result)));
         }
         let read = usize::try_from(result).expect("bytes read fits in usize");
@@ -267,7 +262,11 @@ impl<B: IoBufMut> Op for ReadOp<'_, B> {
                 }
 
                 let err = io::Error::last_os_error();
-                if err.raw_os_error() == Some(ERROR_IO_PENDING as i32) {
+                // On Windows, read beyond EOF is an error unlike on Unix-like systems,
+                // which would just do nothing.
+                if err.raw_os_error() == Some(ERROR_IO_PENDING as i32)
+                    || err.raw_os_error() == Some(ERROR_HANDLE_EOF as i32)
+                {
                     Ok(())
                 } else {
                     Err(err)
