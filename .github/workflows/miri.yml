@@ -29,10 +29,12 @@ jobs:
         run: cargo miri setup
 
       - name: Run Miri (zincio)
-        # -Zmiri-disable-isolation is required for tcp/mio socket syscalls
-        # (epoll, socket) that Miri otherwise blocks. Tests that need
-        # io_uring (syscall 425), unix sockets, udp, fs blocking-pool etc.
-        # are marked #[cfg_attr(miri, ignore)] so the remaining 35 tests
-        # exercise the core unsafe logic (executor, timer, MockDriver).
+        # -Zmiri-disable-isolation is needed for tcp/mio socket syscalls
+        # (epoll, socket) that Miri otherwise blocks.
+        #
+        # Tests that need io_uring (syscall 425), unix sockets, udp,
+        # fs blocking-pool, and so on, are ignored using #[cfg_attr(miri,ignore)].
+        #
+        # The remaining tests check the core unsafe logic (executor, timer, MockDriver).
         run: MIRIFLAGS="-Zmiri-disable-isolation" cargo miri test -p zincio --lib --verbose
         timeout-minutes: 20
