@@ -13,37 +13,25 @@
 
 use std::cell::RefCell;
 use std::future::poll_fn;
-use std::io::{self, IoSlice};
+use std::io;
 use std::mem::ManuallyDrop;
 use std::net::{Shutdown, SocketAddr, ToSocketAddrs};
 #[cfg(unix)]
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd, RawFd};
+use std::os::fd::{AsRawFd, FromRawFd};
 #[cfg(windows)]
-use std::os::windows::io::{
-    AsRawSocket, AsSocket, BorrowedSocket, FromRawSocket, IntoRawSocket, RawSocket,
-};
-use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::os::windows::io::{AsRawSocket, FromRawSocket};
 
 use mio::Interest;
-use tokio::io::{AsyncRead as TokioAsyncRead, AsyncWrite as TokioAsyncWrite, ReadBuf};
 
 #[cfg(windows)]
 use windows_sys::Win32::Networking::WinSock::{
     self, SOCKADDR, SOCKADDR_STORAGE, SOCK_STREAM, WSADATA,
 };
 
-use crate::io::{
-    AsInnerRawHandle, AsyncReadPoll, AsyncWritePoll, IoBuf, IoBufMut, IoBufTemporaryPoll,
-    IoVectoredBuf, IoVectoredBufMut, IoVectoredBufTemporaryPoll,
-};
+use crate::driver::RegistrationMode;
+use crate::io::{IoBufMut, IoBufTemporaryPoll};
 use crate::net::socket_addr_to_raw;
-use crate::op::{ConnectOp, ReadOp, ReadinessOp, ReadvOp, RecvOp, WriteOp, WritevOp};
-use crate::{
-    driver::RegistrationMode,
-    fd_inner::InnerRawHandle,
-    io::{AsyncRead, AsyncWrite},
-};
+use crate::op::{ConnectOp, RecvOp};
 
 #[cfg(unix)]
 fn new_socket(
@@ -54,7 +42,8 @@ fn new_socket(
     if socket_fd == -1 {
         return Err(io::Error::last_os_error());
     }
-    let stream = unsafe { std::net::TcpStream::from_raw_fd(socket_fd.into_raw_fd()) };
+    let stream =
+        unsafe { std::net::TcpStream::from_raw_fd(std::os::fd::IntoRawFd::into_raw_fd(socket_fd)) };
     Ok((stream, raw_addr, raw_addr_len))
 }
 
@@ -102,7 +91,7 @@ fn new_socket(
 /// ```
 pub struct TcpStream {
     inner: std::net::TcpStream,
-    handle: ManuallyDrop<InnerRawHandle>,
+    handle: ManuallyDrop<crate::fd_inner::InnerRawHandle>,
 }
 
 /// A poll-only variant that always uses readiness-based operations.
@@ -249,13 +238,13 @@ impl TcpStream {
         mode: RegistrationMode,
     ) -> Result<Self, io::Error> {
         #[cfg(unix)]
-        let handle = ManuallyDrop::new(InnerRawHandle::new_with_mode(
+        let handle = ManuallyDrop::new(crate::fd_inner::InnerRawHandle::new_with_mode(
             inner.as_raw_fd(),
             Interest::READABLE | Interest::WRITABLE,
             mode,
         )?);
         #[cfg(windows)]
-        let handle = ManuallyDrop::new(InnerRawHandle::new_with_mode(
+        let handle = ManuallyDrop::new(crate::fd_inner::InnerRawHandle::new_with_mode(
             crate::fd_inner::RawOsHandle::Socket(inner.as_raw_socket()),
             Interest::READABLE | Interest::WRITABLE,
             mode,
@@ -422,331 +411,11 @@ impl PollTcpStream {
         let mut op = RecvOp::new_peek(handle, buf);
         poll_fn(move |cx| handle.poll_op_poll(cx, &mut op)).await
     }
-
-    /// Tries to perform an I/O operation on the socket, returning an error if it is not ready.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the underlying I/O operation fails.
-    #[inline]
-    pub fn try_io_readable<Io, IoR>(&self, io: Io) -> io::Result<IoR>
-    where
-        Io: FnOnce() -> io::Result<IoR>,
-    {
-        if *self.read_ready.borrow() {
-            let result = io();
-            if result.is_err() {
-                *self.read_ready.borrow_mut() = false;
-            }
-            result
-        } else {
-            Err(io::Error::new(io::ErrorKind::WouldBlock, "read not ready"))
-        }
-    }
-
-    /// Tries to perform an I/O operation on the socket, returning an error if it is not ready.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the underlying I/O operation fails.
-    #[inline]
-    pub fn try_io_writable<Io, IoR>(&self, io: Io) -> io::Result<IoR>
-    where
-        Io: FnOnce() -> io::Result<IoR>,
-    {
-        if *self.write_ready.borrow() {
-            let result = io();
-            if result.is_err() {
-                *self.write_ready.borrow_mut() = false;
-            }
-            result
-        } else {
-            Err(io::Error::new(io::ErrorKind::WouldBlock, "write not ready"))
-        }
-    }
 }
 
-#[cfg(unix)]
-impl AsRawFd for TcpStream {
-    #[inline]
-    fn as_raw_fd(&self) -> RawFd {
-        self.inner.as_raw_fd()
-    }
-}
-
-#[cfg(unix)]
-impl AsFd for TcpStream {
-    #[inline]
-    fn as_fd(&self) -> BorrowedFd<'_> {
-        self.inner.as_fd()
-    }
-}
-
-#[cfg(unix)]
-impl AsRawFd for PollTcpStream {
-    #[inline]
-    fn as_raw_fd(&self) -> RawFd {
-        self.stream.inner.as_raw_fd()
-    }
-}
-
-#[cfg(unix)]
-impl AsFd for PollTcpStream {
-    #[inline]
-    fn as_fd(&self) -> BorrowedFd<'_> {
-        self.stream.inner.as_fd()
-    }
-}
-
-#[cfg(unix)]
-impl IntoRawFd for TcpStream {
-    #[inline]
-    fn into_raw_fd(self) -> RawFd {
-        let mut this = ManuallyDrop::new(self);
-
-        // Safety: `this` will not be dropped, so we must drop the registration handle manually.
-        // We then move out the inner std stream and transfer its fd ownership to the caller.
-        unsafe {
-            ManuallyDrop::drop(&mut this.handle);
-            std::ptr::read(&raw const this.inner).into_raw_fd()
-        }
-    }
-}
-
-#[cfg(unix)]
-impl IntoRawFd for PollTcpStream {
-    #[inline]
-    fn into_raw_fd(self) -> RawFd {
-        self.stream.into_raw_fd()
-    }
-}
-
-#[cfg(windows)]
-impl AsRawSocket for TcpStream {
-    #[inline]
-    fn as_raw_socket(&self) -> RawSocket {
-        self.inner.as_raw_socket()
-    }
-}
-
-#[cfg(windows)]
-impl AsSocket for TcpStream {
-    #[inline]
-    fn as_socket(&self) -> BorrowedSocket<'_> {
-        self.inner.as_socket()
-    }
-}
-
-#[cfg(windows)]
-impl IntoRawSocket for TcpStream {
-    #[inline]
-    fn into_raw_socket(self) -> RawSocket {
-        let mut this = ManuallyDrop::new(self);
-
-        // Safety: `this` will not be dropped, so we must drop the registration handle manually.
-        // We then move out the inner std stream and transfer its socket ownership to the caller.
-        unsafe {
-            ManuallyDrop::drop(&mut this.handle);
-            std::ptr::read(&raw const this.inner).into_raw_socket()
-        }
-    }
-}
-
-#[cfg(windows)]
-impl AsRawSocket for PollTcpStream {
-    #[inline]
-    fn as_raw_socket(&self) -> RawSocket {
-        self.stream.as_raw_socket()
-    }
-}
-
-#[cfg(windows)]
-impl AsSocket for PollTcpStream {
-    #[inline]
-    fn as_socket(&self) -> BorrowedSocket<'_> {
-        self.stream.as_socket()
-    }
-}
-
-#[cfg(windows)]
-impl IntoRawSocket for PollTcpStream {
-    #[inline]
-    fn into_raw_socket(self) -> RawSocket {
-        self.stream.into_raw_socket()
-    }
-}
-
-impl<'a> AsInnerRawHandle<'a> for TcpStream {
-    #[inline]
-    fn as_inner_raw_handle(&'a self) -> &'a InnerRawHandle {
-        &self.handle
-    }
-}
-
-impl<'a> AsInnerRawHandle<'a> for PollTcpStream {
-    #[inline]
-    fn as_inner_raw_handle(&'a self) -> &'a InnerRawHandle {
-        self.stream.as_inner_raw_handle()
-    }
-}
-
-impl AsyncRead for TcpStream {
-    #[inline]
-    async fn read<B: IoBufMut>(&mut self, buf: B) -> (Result<usize, io::Error>, B) {
-        let handle = &self.handle;
-        let mut op = ReadOp::new(handle, buf);
-        let result = poll_fn(|cx| handle.poll_op(cx, &mut op)).await;
-        (result, op.take_bufs())
-    }
-
-    #[inline]
-    async fn read_vectored<B: IoVectoredBufMut>(
-        &mut self,
-        bufs: B,
-    ) -> (Result<usize, io::Error>, B) {
-        if bufs.is_empty() {
-            return (Ok(0), bufs);
-        }
-        let handle = &self.handle;
-        let mut op = ReadvOp::new(handle, bufs);
-        let result = poll_fn(|cx| handle.poll_op(cx, &mut op)).await;
-        (result, op.take_bufs())
-    }
-}
-
-impl TokioAsyncRead for PollTcpStream {
-    #[inline]
-    fn poll_read(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<Result<(), io::Error>> {
-        if buf.remaining() == 0 {
-            return Poll::Ready(Ok(()));
-        }
-
-        let this = self.get_mut();
-        // Only a pointer reaches the kernel, which writes the bytes `assume_init`
-        // then counts: no `&mut [u8]` over memory that is not initialized yet.
-        let unfilled = unsafe { buf.unfilled_mut() };
-        let buf_temp =
-            unsafe { IoBufTemporaryPoll::new(unfilled.as_mut_ptr().cast::<u8>(), unfilled.len()) };
-        let mut op = ReadOp::new(&this.stream.handle, buf_temp);
-        match this.stream.handle.poll_op_poll(cx, &mut op) {
-            Poll::Ready(Ok(read)) => {
-                unsafe {
-                    buf.assume_init(read);
-                }
-                buf.advance(read);
-                Poll::Ready(Ok(()))
-            }
-            Poll::Ready(Err(err)) => Poll::Ready(Err(err)),
-            Poll::Pending => Poll::Pending,
-        }
-    }
-}
-
-impl AsyncWrite for TcpStream {
-    #[inline]
-    async fn write<B: IoBuf>(&mut self, buf: B) -> (Result<usize, io::Error>, B) {
-        let handle = &self.handle;
-        let mut op = WriteOp::new(handle, buf);
-        let result = poll_fn(|cx| handle.poll_op(cx, &mut op)).await;
-        (result, op.take_bufs())
-    }
-
-    #[inline]
-    async fn write_vectored<B: IoVectoredBuf>(&mut self, bufs: B) -> (Result<usize, io::Error>, B) {
-        if bufs.is_empty() {
-            return (Ok(0), bufs);
-        }
-        let handle = &self.handle;
-        let mut op = WritevOp::new(handle, bufs);
-        let result = poll_fn(|cx| handle.poll_op(cx, &mut op)).await;
-        (result, op.take_bufs())
-    }
-}
-
-impl TokioAsyncWrite for PollTcpStream {
-    #[inline]
-    fn poll_write(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<Result<usize, io::Error>> {
-        let this = self.get_mut();
-        let buf = unsafe { IoBufTemporaryPoll::new(buf.as_ptr().cast_mut(), buf.len()) };
-        let mut op = WriteOp::new(&this.stream.handle, buf);
-        this.stream.handle.poll_op_poll(cx, &mut op)
-    }
-
-    #[inline]
-    fn poll_write_vectored(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        bufs: &[IoSlice<'_>],
-    ) -> Poll<Result<usize, io::Error>> {
-        if bufs.is_empty() {
-            return Poll::Ready(Ok(0));
-        }
-        let this = self.get_mut();
-        let bufs = unsafe { IoVectoredBufTemporaryPoll::new(bufs) };
-        let mut op = WritevOp::new(&this.stream.handle, bufs);
-        this.stream.handle.poll_op_poll(cx, &mut op)
-    }
-
-    #[inline]
-    fn is_write_vectored(&self) -> bool {
-        true
-    }
-
-    #[inline]
-    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    #[inline]
-    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
-        Poll::Ready(self.get_mut().shutdown(Shutdown::Write))
-    }
-}
-
-impl AsyncReadPoll for PollTcpStream {
-    #[inline]
-    fn poll_readable(&self, cx: &mut std::task::Context) -> std::task::Poll<io::Result<()>> {
-        if *self.read_ready.borrow() {
-            return Poll::Ready(Ok(()));
-        }
-        let poll = self
-            .stream
-            .handle
-            .poll_op_poll(cx, &mut ReadinessOp::new_readable(&self.stream.handle))?;
-        *self.read_ready.borrow_mut() = true;
-        poll.map(Ok)
-    }
-}
-
-impl AsyncWritePoll for PollTcpStream {
-    #[inline]
-    fn poll_writable(&self, cx: &mut std::task::Context) -> std::task::Poll<io::Result<()>> {
-        if *self.write_ready.borrow() {
-            return Poll::Ready(Ok(()));
-        }
-        let poll = self
-            .stream
-            .handle
-            .poll_op_poll(cx, &mut ReadinessOp::new_writable(&self.stream.handle))?;
-        *self.write_ready.borrow_mut() = true;
-        poll.map(Ok)
-    }
-}
-
-impl Drop for TcpStream {
-    #[inline]
-    fn drop(&mut self) {
-        // Safety: The struct is dropped after the handle is dropped.
-        unsafe {
-            ManuallyDrop::drop(&mut self.handle);
-        }
-    }
-}
+impl_handle_traits!(TcpStream);
+impl_handle_windows_traits!(TcpStream);
+impl_handle_io_traits!(TcpStream);
+impl_poll_handle_traits!(PollTcpStream, stream);
+impl_poll_handle_windows_traits!(PollTcpStream, stream);
+impl_poll_handle_io_traits!(PollTcpStream);

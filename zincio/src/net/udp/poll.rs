@@ -3,20 +3,13 @@
 use std::cell::RefCell;
 use std::io;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs, UdpSocket as StdUdpSocket};
-#[cfg(unix)]
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd, IntoRawFd, RawFd};
-#[cfg(windows)]
-use std::os::windows::io::{AsRawSocket, AsSocket, BorrowedSocket, IntoRawSocket, RawSocket};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
 use crate::driver::RegistrationMode;
-use crate::fd_inner::InnerRawHandle;
-use crate::io::{
-    AsInnerRawHandle, AsyncReadPoll, AsyncWritePoll, IoBuf, IoBufMut, IoBufTemporaryPoll,
-};
-use crate::op::{ReadinessOp, RecvOp, RecvfromOp, SendOp, SendtoOp};
+use crate::io::{IoBuf, IoBufMut, IoBufTemporaryPoll};
+use crate::op::{RecvOp, RecvfromOp, SendOp, SendtoOp};
 
 use super::UdpSocket;
 
@@ -511,131 +504,7 @@ impl PollUdpSocket {
         let mut op = RecvfromOp::new_peek(handle, buf_temp);
         handle.poll_op_poll(cx, &mut op)
     }
-
-    /// Tries to perform an I/O operation on the socket, returning an error if it is not ready.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the underlying I/O operation fails.
-    #[inline]
-    pub fn try_io_readable<Io, IoR>(&self, io: Io) -> io::Result<IoR>
-    where
-        Io: FnOnce() -> io::Result<IoR>,
-    {
-        if *self.read_ready.borrow() {
-            let result = io();
-            if result.is_err() {
-                *self.read_ready.borrow_mut() = false;
-            }
-            result
-        } else {
-            Err(io::Error::new(io::ErrorKind::WouldBlock, "read not ready"))
-        }
-    }
-
-    /// Tries to perform an I/O operation on the socket, returning an error if it is not ready.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the underlying I/O operation fails.
-    #[inline]
-    pub fn try_io_writable<Io, IoR>(&self, io: Io) -> io::Result<IoR>
-    where
-        Io: FnOnce() -> io::Result<IoR>,
-    {
-        if *self.write_ready.borrow() {
-            let result = io();
-            if result.is_err() {
-                *self.write_ready.borrow_mut() = false;
-            }
-            result
-        } else {
-            Err(io::Error::new(io::ErrorKind::WouldBlock, "write not ready"))
-        }
-    }
 }
 
-impl AsyncReadPoll for PollUdpSocket {
-    #[inline]
-    fn poll_readable(&self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        if *self.read_ready.borrow() {
-            return Poll::Ready(Ok(()));
-        }
-        let poll = self
-            .socket
-            .handle
-            .poll_op_poll(cx, &mut ReadinessOp::new_readable(&self.socket.handle))?;
-        *self.read_ready.borrow_mut() = true;
-        poll.map(Ok)
-    }
-}
-
-impl AsyncWritePoll for PollUdpSocket {
-    #[inline]
-    fn poll_writable(&self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        if *self.write_ready.borrow() {
-            return Poll::Ready(Ok(()));
-        }
-        let poll = self
-            .socket
-            .handle
-            .poll_op_poll(cx, &mut ReadinessOp::new_writable(&self.socket.handle))?;
-        *self.write_ready.borrow_mut() = true;
-        poll.map(Ok)
-    }
-}
-
-impl<'a> AsInnerRawHandle<'a> for PollUdpSocket {
-    #[inline]
-    fn as_inner_raw_handle(&'a self) -> &'a InnerRawHandle {
-        self.socket.as_inner_raw_handle()
-    }
-}
-
-#[cfg(unix)]
-impl AsRawFd for PollUdpSocket {
-    #[inline]
-    fn as_raw_fd(&self) -> RawFd {
-        self.socket.inner.as_raw_fd()
-    }
-}
-
-#[cfg(unix)]
-impl AsFd for PollUdpSocket {
-    #[inline]
-    fn as_fd(&self) -> BorrowedFd<'_> {
-        self.socket.inner.as_fd()
-    }
-}
-
-#[cfg(unix)]
-impl IntoRawFd for PollUdpSocket {
-    #[inline]
-    fn into_raw_fd(self) -> RawFd {
-        self.socket.into_std().into_raw_fd()
-    }
-}
-
-#[cfg(windows)]
-impl AsRawSocket for PollUdpSocket {
-    #[inline]
-    fn as_raw_socket(&self) -> RawSocket {
-        self.socket.inner.as_raw_socket()
-    }
-}
-
-#[cfg(windows)]
-impl AsSocket for PollUdpSocket {
-    #[inline]
-    fn as_socket(&self) -> BorrowedSocket<'_> {
-        self.socket.inner.as_socket()
-    }
-}
-
-#[cfg(windows)]
-impl IntoRawSocket for PollUdpSocket {
-    #[inline]
-    fn into_raw_socket(self) -> RawSocket {
-        self.socket.into_std().into_raw_socket()
-    }
-}
+impl_poll_handle_traits!(PollUdpSocket, socket);
+impl_poll_handle_windows_traits!(PollUdpSocket, socket);

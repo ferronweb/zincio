@@ -15,11 +15,9 @@ use std::io;
 use std::mem::ManuallyDrop;
 use std::net::{SocketAddr, TcpListener as StdTcpListener, ToSocketAddrs};
 #[cfg(unix)]
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd, RawFd};
+use std::os::fd::{AsRawFd, FromRawFd};
 #[cfg(windows)]
-use std::os::windows::io::{
-    AsRawSocket, AsSocket, BorrowedSocket, FromRawSocket, IntoRawSocket, RawSocket,
-};
+use std::os::windows::io::{AsRawSocket, FromRawSocket};
 
 use mio::Interest;
 #[cfg(windows)]
@@ -159,7 +157,7 @@ fn bind_one(address: SocketAddr) -> Result<StdTcpListener, io::Error> {
         return Err(io::Error::from_raw_os_error(err_code));
     }
 
-    Ok(unsafe { StdTcpListener::from_raw_socket(socket as RawSocket) })
+    Ok(unsafe { StdTcpListener::from_raw_socket(socket as std::os::windows::io::RawSocket) })
 }
 
 /// An async TCP listener that can use either completion-based or poll-based I/O.
@@ -297,74 +295,5 @@ impl TcpListener {
     }
 }
 
-#[cfg(unix)]
-impl AsRawFd for TcpListener {
-    #[inline]
-    fn as_raw_fd(&self) -> RawFd {
-        self.inner.as_raw_fd()
-    }
-}
-
-#[cfg(unix)]
-impl AsFd for TcpListener {
-    #[inline]
-    fn as_fd(&self) -> BorrowedFd<'_> {
-        self.inner.as_fd()
-    }
-}
-
-#[cfg(unix)]
-impl IntoRawFd for TcpListener {
-    #[inline]
-    fn into_raw_fd(self) -> RawFd {
-        let mut this = ManuallyDrop::new(self);
-
-        // Safety: `this` will not be dropped, so we must drop the registration handle manually.
-        // We then move out the inner std stream and transfer its fd ownership to the caller.
-        unsafe {
-            ManuallyDrop::drop(&mut this.handle);
-            std::ptr::read(&raw const this.inner).into_raw_fd()
-        }
-    }
-}
-
-#[cfg(windows)]
-impl AsRawSocket for TcpListener {
-    #[inline]
-    fn as_raw_socket(&self) -> RawSocket {
-        self.inner.as_raw_socket()
-    }
-}
-
-#[cfg(windows)]
-impl AsSocket for TcpListener {
-    #[inline]
-    fn as_socket(&self) -> BorrowedSocket<'_> {
-        self.inner.as_socket()
-    }
-}
-
-#[cfg(windows)]
-impl IntoRawSocket for TcpListener {
-    #[inline]
-    fn into_raw_socket(self) -> RawSocket {
-        let mut this = ManuallyDrop::new(self);
-
-        // Safety: `this` will not be dropped, so we must drop the registration handle manually.
-        // We then move out the inner std stream and transfer its socket ownership to the caller.
-        unsafe {
-            ManuallyDrop::drop(&mut this.handle);
-            std::ptr::read(&raw const this.inner).into_raw_socket()
-        }
-    }
-}
-
-impl Drop for TcpListener {
-    #[inline]
-    fn drop(&mut self) {
-        // Safety: The struct is dropped after the handle is dropped.
-        unsafe {
-            ManuallyDrop::drop(&mut self.handle);
-        }
-    }
-}
+impl_handle_traits!(TcpListener);
+impl_handle_windows_traits!(TcpListener);

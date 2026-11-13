@@ -13,29 +13,18 @@
 
 use std::cell::RefCell;
 use std::future::poll_fn;
-use std::io::{self, IoSlice};
+use std::io;
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::net::Shutdown;
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd, RawFd};
+use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::net::{SocketAddr, UnixStream as StdUnixStream};
 use std::path::Path;
-use std::pin::Pin;
-use std::task::{Context, Poll};
 
 use mio::Interest;
-use tokio::io::{AsyncRead as TokioAsyncRead, AsyncWrite as TokioAsyncWrite, ReadBuf};
 
-use crate::io::{
-    AsInnerRawHandle, AsyncReadPoll, AsyncWritePoll, IoBuf, IoBufMut, IoBufTemporaryPoll,
-    IoVectoredBuf, IoVectoredBufMut, IoVectoredBufTemporaryPoll,
-};
-use crate::op::{ConnectOp, ReadOp, ReadinessOp, ReadvOp, WriteOp, WritevOp};
-use crate::{
-    driver::RegistrationMode,
-    fd_inner::InnerRawHandle,
-    io::{AsyncRead, AsyncWrite},
-};
+use crate::op::ConnectOp;
+use crate::{driver::RegistrationMode, fd_inner::InnerRawHandle};
 
 #[inline]
 fn socket_addr_to_raw(path: &Path) -> Result<(libc::sockaddr_un, libc::socklen_t), io::Error> {
@@ -262,6 +251,27 @@ impl UnixStream {
             write_ready: RefCell::new(false),
         })
     }
+
+    /// Creates a new `UnixStream` that is ready to use with readiness-based I/O.
+    ///
+    /// This is useful when you want to create a Unix stream that uses poll-based I/O.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying I/O operation fails.
+    #[inline]
+    pub fn from_std_poll(inner: StdUnixStream) -> Result<PollUnixStream, io::Error> {
+        let handle = ManuallyDrop::new(InnerRawHandle::new(
+            inner.as_raw_fd(),
+            Interest::READABLE | Interest::WRITABLE,
+        )?);
+        inner.set_nonblocking(!handle.uses_completion())?;
+        Ok(PollUnixStream {
+            stream: Self { inner, handle },
+            read_ready: RefCell::new(false),
+            write_ready: RefCell::new(false),
+        })
+    }
 }
 
 impl PollUnixStream {
@@ -347,293 +357,9 @@ impl PollUnixStream {
     pub fn shutdown(&self, how: Shutdown) -> Result<(), io::Error> {
         self.stream.shutdown(how)
     }
-
-    /// Tries to perform an I/O operation on the socket, returning an error if it is not ready.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the underlying I/O operation fails.
-    #[inline]
-    pub fn try_io_readable<Io, IoR>(&self, io: Io) -> io::Result<IoR>
-    where
-        Io: FnOnce() -> io::Result<IoR>,
-    {
-        if *self.read_ready.borrow() {
-            let result = io();
-            if result.is_err() {
-                *self.read_ready.borrow_mut() = false;
-            }
-            result
-        } else {
-            Err(io::Error::new(io::ErrorKind::WouldBlock, "read not ready"))
-        }
-    }
-
-    /// Tries to perform an I/O operation on the socket, returning an error if it is not ready.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the underlying I/O operation fails.
-    #[inline]
-    pub fn try_io_writable<Io, IoR>(&self, io: Io) -> io::Result<IoR>
-    where
-        Io: FnOnce() -> io::Result<IoR>,
-    {
-        if *self.write_ready.borrow() {
-            let result = io();
-            if result.is_err() {
-                *self.write_ready.borrow_mut() = false;
-            }
-            result
-        } else {
-            Err(io::Error::new(io::ErrorKind::WouldBlock, "write not ready"))
-        }
-    }
 }
 
-impl AsRawFd for PollUnixStream {
-    #[inline]
-    fn as_raw_fd(&self) -> RawFd {
-        self.stream.inner.as_raw_fd()
-    }
-}
-
-impl AsFd for PollUnixStream {
-    #[inline]
-    fn as_fd(&self) -> BorrowedFd<'_> {
-        self.stream.inner.as_fd()
-    }
-}
-
-impl IntoRawFd for PollUnixStream {
-    #[inline]
-    fn into_raw_fd(self) -> RawFd {
-        self.stream.into_raw_fd()
-    }
-}
-
-impl TokioAsyncRead for PollUnixStream {
-    #[inline]
-    fn poll_read(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<Result<(), io::Error>> {
-        if buf.remaining() == 0 {
-            return Poll::Ready(Ok(()));
-        }
-
-        let this = self.get_mut();
-        // Only a pointer reaches the kernel, which writes the bytes `assume_init`
-        // then counts: no `&mut [u8]` over memory that is not initialized yet.
-        let unfilled = unsafe { buf.unfilled_mut() };
-        let buf_temp =
-            unsafe { IoBufTemporaryPoll::new(unfilled.as_mut_ptr().cast::<u8>(), unfilled.len()) };
-        let mut op = ReadOp::new(&this.stream.handle, buf_temp);
-        match this.stream.handle.poll_op_poll(cx, &mut op) {
-            Poll::Ready(Ok(read)) => {
-                unsafe {
-                    buf.assume_init(read);
-                }
-                buf.advance(read);
-                Poll::Ready(Ok(()))
-            }
-            Poll::Ready(Err(err)) => Poll::Ready(Err(err)),
-            Poll::Pending => Poll::Pending,
-        }
-    }
-}
-
-impl TokioAsyncWrite for PollUnixStream {
-    #[inline]
-    fn poll_write(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<Result<usize, io::Error>> {
-        let this = self.get_mut();
-        let buf = unsafe { IoBufTemporaryPoll::new(buf.as_ptr().cast_mut(), buf.len()) };
-        let mut op = WriteOp::new(&this.stream.handle, buf);
-        this.stream.handle.poll_op_poll(cx, &mut op)
-    }
-
-    #[inline]
-    fn poll_write_vectored(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        bufs: &[IoSlice<'_>],
-    ) -> Poll<Result<usize, io::Error>> {
-        if bufs.is_empty() {
-            return Poll::Ready(Ok(0));
-        }
-        let this = self.get_mut();
-        let bufs = unsafe { IoVectoredBufTemporaryPoll::new(bufs) };
-        let mut op = WritevOp::new(&this.stream.handle, bufs);
-        this.stream.handle.poll_op_poll(cx, &mut op)
-    }
-
-    #[inline]
-    fn is_write_vectored(&self) -> bool {
-        true
-    }
-
-    #[inline]
-    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    #[inline]
-    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
-        Poll::Ready(self.get_mut().shutdown(Shutdown::Write))
-    }
-}
-
-impl UnixStream {
-    /// Creates a new `UnixStream` that is ready to use with readiness-based I/O.
-    ///
-    /// This is useful when you want to create a Unix stream that uses poll-based I/O.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the underlying I/O operation fails.
-    #[inline]
-    pub fn from_std_poll(inner: StdUnixStream) -> Result<PollUnixStream, io::Error> {
-        let handle = ManuallyDrop::new(InnerRawHandle::new(
-            inner.as_raw_fd(),
-            Interest::READABLE | Interest::WRITABLE,
-        )?);
-        inner.set_nonblocking(!handle.uses_completion())?;
-        Ok(PollUnixStream {
-            stream: Self { inner, handle },
-            read_ready: RefCell::new(false),
-            write_ready: RefCell::new(false),
-        })
-    }
-}
-
-impl AsRawFd for UnixStream {
-    #[inline]
-    fn as_raw_fd(&self) -> RawFd {
-        self.inner.as_raw_fd()
-    }
-}
-
-impl AsFd for UnixStream {
-    #[inline]
-    fn as_fd(&self) -> BorrowedFd<'_> {
-        self.inner.as_fd()
-    }
-}
-
-impl<'a> AsInnerRawHandle<'a> for UnixStream {
-    #[inline]
-    fn as_inner_raw_handle(&'a self) -> &'a InnerRawHandle {
-        &self.handle
-    }
-}
-
-impl<'a> AsInnerRawHandle<'a> for PollUnixStream {
-    #[inline]
-    fn as_inner_raw_handle(&'a self) -> &'a InnerRawHandle {
-        self.stream.as_inner_raw_handle()
-    }
-}
-
-impl IntoRawFd for UnixStream {
-    #[inline]
-    fn into_raw_fd(self) -> RawFd {
-        let mut this = ManuallyDrop::new(self);
-
-        // Safety: `this` will not be dropped, so we must drop the registration handle manually.
-        // We then move out the inner std stream and transfer its fd ownership to the caller.
-        unsafe {
-            ManuallyDrop::drop(&mut this.handle);
-            std::ptr::read(&raw const this.inner).into_raw_fd()
-        }
-    }
-}
-
-impl AsyncRead for UnixStream {
-    #[inline]
-    async fn read<B: IoBufMut>(&mut self, buf: B) -> (Result<usize, io::Error>, B) {
-        let handle = &self.handle;
-        let mut op = ReadOp::new(handle, buf);
-        let result = poll_fn(|cx| handle.poll_op(cx, &mut op)).await;
-        (result, op.take_bufs())
-    }
-
-    #[inline]
-    async fn read_vectored<B: IoVectoredBufMut>(
-        &mut self,
-        bufs: B,
-    ) -> (Result<usize, io::Error>, B) {
-        if bufs.is_empty() {
-            return (Ok(0), bufs);
-        }
-        let handle = &self.handle;
-        let mut op = ReadvOp::new(handle, bufs);
-        let result = poll_fn(|cx| handle.poll_op(cx, &mut op)).await;
-        (result, op.take_bufs())
-    }
-}
-
-impl AsyncWrite for UnixStream {
-    #[inline]
-    async fn write<B: IoBuf>(&mut self, buf: B) -> (Result<usize, io::Error>, B) {
-        let handle = &self.handle;
-        let mut op = WriteOp::new(handle, buf);
-        let result = poll_fn(|cx| handle.poll_op(cx, &mut op)).await;
-        (result, op.take_bufs())
-    }
-
-    #[inline]
-    async fn write_vectored<B: IoVectoredBuf>(&mut self, bufs: B) -> (Result<usize, io::Error>, B) {
-        if bufs.is_empty() {
-            return (Ok(0), bufs);
-        }
-        let handle = &self.handle;
-        let mut op = WritevOp::new(handle, bufs);
-        let result = poll_fn(|cx| handle.poll_op(cx, &mut op)).await;
-        (result, op.take_bufs())
-    }
-}
-
-impl AsyncReadPoll for PollUnixStream {
-    #[inline]
-    fn poll_readable(&self, cx: &mut std::task::Context) -> std::task::Poll<io::Result<()>> {
-        if *self.read_ready.borrow() {
-            return Poll::Ready(Ok(()));
-        }
-        let poll = self
-            .stream
-            .handle
-            .poll_op_poll(cx, &mut ReadinessOp::new_readable(&self.stream.handle))?;
-        *self.read_ready.borrow_mut() = true;
-        poll.map(Ok)
-    }
-}
-
-impl AsyncWritePoll for PollUnixStream {
-    #[inline]
-    fn poll_writable(&self, cx: &mut std::task::Context) -> std::task::Poll<io::Result<()>> {
-        if *self.write_ready.borrow() {
-            return Poll::Ready(Ok(()));
-        }
-        let poll = self
-            .stream
-            .handle
-            .poll_op_poll(cx, &mut ReadinessOp::new_writable(&self.stream.handle))?;
-        *self.write_ready.borrow_mut() = true;
-        poll.map(Ok)
-    }
-}
-
-impl Drop for UnixStream {
-    #[inline]
-    fn drop(&mut self) {
-        // Safety: The struct is dropped after the handle is dropped.
-        unsafe {
-            ManuallyDrop::drop(&mut self.handle);
-        }
-    }
-}
+impl_handle_traits!(UnixStream);
+impl_handle_io_traits!(UnixStream);
+impl_poll_handle_traits!(PollUnixStream, stream);
+impl_poll_handle_io_traits!(PollUnixStream);

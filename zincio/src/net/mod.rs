@@ -44,6 +44,8 @@
 //! let stream = UnixStream::connect("/tmp/mysocket").await?;
 //! ```
 
+#[macro_use]
+mod macros;
 mod tcp;
 mod udp;
 #[cfg(unix)]

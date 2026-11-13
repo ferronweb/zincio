@@ -13,7 +13,7 @@
 use std::future::poll_fn;
 use std::io;
 use std::mem::ManuallyDrop;
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd, RawFd};
+use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::unix::net::{
     SocketAddr, UnixListener as StdUnixListener, UnixStream as StdUnixStream,
 };
@@ -113,40 +113,4 @@ impl UnixListener {
     }
 }
 
-impl AsRawFd for UnixListener {
-    #[inline]
-    fn as_raw_fd(&self) -> RawFd {
-        self.inner.as_raw_fd()
-    }
-}
-
-impl AsFd for UnixListener {
-    #[inline]
-    fn as_fd(&self) -> BorrowedFd<'_> {
-        self.inner.as_fd()
-    }
-}
-
-impl IntoRawFd for UnixListener {
-    #[inline]
-    fn into_raw_fd(self) -> RawFd {
-        let mut this = ManuallyDrop::new(self);
-
-        // Safety: `this` will not be dropped, so we must drop the registration handle manually.
-        // We then move out the inner std stream and transfer its fd ownership to the caller.
-        unsafe {
-            ManuallyDrop::drop(&mut this.handle);
-            std::ptr::read(&raw const this.inner).into_raw_fd()
-        }
-    }
-}
-
-impl Drop for UnixListener {
-    #[inline]
-    fn drop(&mut self) {
-        // Safety: The struct is dropped after the handle is dropped.
-        unsafe {
-            ManuallyDrop::drop(&mut self.handle);
-        }
-    }
-}
+impl_handle_traits!(UnixListener);

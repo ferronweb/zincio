@@ -16,9 +16,9 @@ use std::io;
 use std::mem::ManuallyDrop;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs, UdpSocket as StdUdpSocket};
 #[cfg(unix)]
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd, IntoRawFd, RawFd};
+use std::os::fd::AsRawFd;
 #[cfg(windows)]
-use std::os::windows::io::{AsRawSocket, AsSocket, BorrowedSocket, IntoRawSocket, RawSocket};
+use std::os::windows::io::AsRawSocket;
 use std::time::Duration;
 
 use mio::Interest;
@@ -27,9 +27,12 @@ use windows_sys::Win32::Networking::WinSock::SOCKADDR;
 
 use crate::driver::RegistrationMode;
 use crate::fd_inner::InnerRawHandle;
-use crate::io::{AsInnerRawHandle, IoBuf, IoBufMut};
+use crate::io::{IoBuf, IoBufMut};
 use crate::net::socket_addr_to_raw;
 use crate::op::{ConnectOp, RecvOp, RecvfromOp, SendOp, SendtoOp};
+
+mod poll;
+pub use poll::PollUdpSocket;
 
 #[cfg(unix)]
 #[inline]
@@ -578,73 +581,15 @@ impl UdpSocket {
     }
 }
 
-#[cfg(unix)]
-impl AsRawFd for UdpSocket {
+impl<'a> crate::io::AsInnerRawHandle<'a> for UdpSocket {
     #[inline]
-    fn as_raw_fd(&self) -> RawFd {
-        self.inner.as_raw_fd()
-    }
-}
-
-#[cfg(unix)]
-impl AsFd for UdpSocket {
-    #[inline]
-    fn as_fd(&self) -> BorrowedFd<'_> {
-        self.inner.as_fd()
-    }
-}
-
-#[cfg(unix)]
-impl IntoRawFd for UdpSocket {
-    #[inline]
-    fn into_raw_fd(self) -> RawFd {
-        self.into_std().into_raw_fd()
-    }
-}
-
-#[cfg(windows)]
-impl AsRawSocket for UdpSocket {
-    #[inline]
-    fn as_raw_socket(&self) -> RawSocket {
-        self.inner.as_raw_socket()
-    }
-}
-
-#[cfg(windows)]
-impl AsSocket for UdpSocket {
-    #[inline]
-    fn as_socket(&self) -> BorrowedSocket<'_> {
-        self.inner.as_socket()
-    }
-}
-
-#[cfg(windows)]
-impl IntoRawSocket for UdpSocket {
-    #[inline]
-    fn into_raw_socket(self) -> RawSocket {
-        self.into_std().into_raw_socket()
-    }
-}
-
-impl Drop for UdpSocket {
-    #[inline]
-    fn drop(&mut self) {
-        // Safety: The struct is dropped after the handle is dropped.
-        unsafe {
-            ManuallyDrop::drop(&mut self.handle);
-        }
-    }
-}
-
-impl<'a> AsInnerRawHandle<'a> for UdpSocket {
-    #[inline]
-    fn as_inner_raw_handle(&'a self) -> &'a InnerRawHandle {
+    fn as_inner_raw_handle(&'a self) -> &'a crate::fd_inner::InnerRawHandle {
         &self.handle
     }
 }
 
-mod poll;
-pub use poll::PollUdpSocket;
+impl_handle_traits!(UdpSocket);
+impl_handle_windows_traits!(UdpSocket);
 
 #[cfg(test)]
 mod tests {
