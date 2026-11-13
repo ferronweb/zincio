@@ -6,9 +6,6 @@
 #[cfg(target_os = "linux")]
 use std::ffi::CString;
 
-#[cfg(windows)]
-use windows_sys::Win32::Storage::FileSystem::CreateSymbolicLinkW;
-
 #[cfg(target_os = "linux")]
 use crate::op::{HardLinkOp, Op, SymlinkOp};
 

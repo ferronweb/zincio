@@ -82,6 +82,7 @@ impl InnerRawHandle {
         Ok(inner)
     }
 
+    #[allow(dead_code)]
     #[inline]
     pub(crate) fn token(&self) -> Token {
         self.token
