@@ -887,6 +887,7 @@ dependencies = [
 name = "zincio-hyper"
 version = "0.2.29"
 dependencies = [
+ "futures-util",
  "hyper",
  "tokio",
  "zincio",

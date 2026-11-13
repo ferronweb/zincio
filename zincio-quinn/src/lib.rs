@@ -87,7 +87,7 @@ impl Runtime for ZincioRuntime {
 
     #[inline]
     fn spawn(&self, future: Pin<Box<dyn Future<Output = ()> + Send>>) {
-        zincio::spawn(future);
+        zincio::spawn_detached(future);
     }
 
     #[inline]

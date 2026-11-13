@@ -15,6 +15,7 @@ repository = "https://github.com/ferronweb/zincio"
 hyper = "1.8.1"
 tokio = "1.50.0"
 zincio = { workspace = true }
+futures-util = "0.3.32"
 
 [features]
 default = ["time"]

@@ -49,6 +49,7 @@ use std::{
     task::{Context, Poll},
 };
 
+use futures_util::FutureExt;
 use hyper::rt::Executor;
 #[cfg(feature = "time")]
 use hyper::rt::{Sleep, Timer};
@@ -68,7 +69,7 @@ where
 {
     #[inline]
     fn execute(&self, fut: Fut) {
-        zincio::spawn(fut);
+        zincio::spawn_detached(fut.map(|_| ()));
     }
 }
 
