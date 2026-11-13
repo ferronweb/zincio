@@ -940,4 +940,21 @@ mod tests {
         });
         assert_eq!(value, 42);
     }
+
+    #[test]
+    fn test_park_unpark_roundtrip() {
+        let (tx, rx) = oneshot::async_channel();
+
+        // Spawn a separate thread with a `zincio` runtime to test cross-thread
+        // wakes.
+        let rt_thread = std::thread::spawn(|| {
+            let runtime = crate::executor::Runtime::new(AnyDriver::new_mock());
+            runtime.block_on(async {
+                rx.await.unwrap();
+            });
+        });
+
+        let _ = tx.send(());
+        rt_thread.join().unwrap();
+    }
 }
