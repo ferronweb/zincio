@@ -85,6 +85,10 @@ The following features are available (most are enabled by default):
 - `splice`: enables splice support (Linux).
 - `blocking-default`: enables the default blocking thread pool.
 
+## Contributing
+
+Feedback, bug reports, and testing are welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup, checks, and guidelines.
+
 ## License
 
 [MIT](./LICENSE)
