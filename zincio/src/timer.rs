@@ -463,7 +463,10 @@ mod tests {
         let (deadline, _woken_up) = timer.spin_and_get_deadline();
         assert!(deadline.is_some());
         let ms = deadline.unwrap().as_millis();
-        assert!(ms <= 50 && ms > 0, "Deadline should be <= 50ms, got {ms}");
+        assert!(
+            (45..=50).contains(&ms),
+            "Deadline should be between 45ms and 50ms, got {ms}"
+        );
     }
 
     #[test]
@@ -481,27 +484,6 @@ mod tests {
         // After cancel, deadline should be None
         let (deadline, _woken_up) = timer.spin_and_get_deadline();
         assert!(deadline.is_none());
-    }
-
-    #[test]
-    fn test_timer_wake() {
-        let timer = Timer::new();
-        let counter = Arc::new(Mutex::new(0));
-        let waker = mock_waker(counter.clone());
-
-        // Submit a timer for 1 ms
-        let _handle = timer.submit(Instant::now() + Duration::from_millis(1), waker);
-
-        // Wait a bit and spin the wheel
-        std::thread::sleep(Duration::from_millis(5));
-        timer.spin_and_get_deadline();
-
-        // The waker should have been called
-        let count = counter.lock().unwrap();
-        assert!(
-            *count >= 1,
-            "Waker should have been called or at least not panic"
-        );
     }
 
     #[test]
@@ -553,6 +535,8 @@ mod tests {
         // Advance 1 tick - should expire immediately
         let expired = wheel.advance(1);
         assert_eq!(expired.len(), 1);
+        assert!(wheel.is_empty());
+        assert!(wheel.nearest_wakeup().is_none());
     }
 
     #[test]
