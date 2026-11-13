@@ -5,6 +5,7 @@
 **Not yet released**
 
 - Fixed beyond-EOF (`ERROR_HANDLE_EOF`) file read errors on the IOCP driver on Windows
+- Fixed runtime builder ignoring `io_uring` custom builder when not using `IoUringCustom` driver variant
 
 ## `zincio` 0.2.29
 

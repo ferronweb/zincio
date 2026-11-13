@@ -159,12 +159,18 @@ impl RuntimeBuilder {
     where
         F: FnOnce(&mut io_uring::Builder),
     {
-        let mut builder = match self.driver_kind.take() {
-            Some(DriverKind::IoUringCustom(b)) => b,
-            _ => io_uring::IoUring::builder(),
+        let (entries, mut builder) = match self.driver_kind.take() {
+            Some(DriverKind::IoUringCustom(b)) => (None, b),
+            Some(DriverKind::IoUringCustomEntries(e, b)) => (Some(e), b),
+            Some(DriverKind::IoUringEntries(e)) => (Some(e), io_uring::IoUring::builder()),
+            _ => (None, io_uring::IoUring::builder()),
         };
         f(&mut builder);
-        self.driver_kind = Some(DriverKind::IoUringCustom(builder));
+        if let Some(entries) = entries {
+            self.driver_kind = Some(DriverKind::IoUringCustomEntries(entries, builder));
+        } else {
+            self.driver_kind = Some(DriverKind::IoUringCustom(builder));
+        }
         self
     }
 
