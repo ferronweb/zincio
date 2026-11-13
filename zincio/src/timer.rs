@@ -227,45 +227,17 @@ impl TimingWheel {
         }
     }
 
-    /// Cascade all timers from a specific level down to lower levels
-    fn cascade_level(&mut self, level: usize, expired_wakers: &mut Vec<Waker>) {
-        for slot in 0..SLOTS_PER_LEVEL {
-            let timers_to_cascade: Vec<usize> = std::mem::take(&mut self.wheels[level][slot]);
-
-            for slab_index in timers_to_cascade {
-                if let Some(entry) = self.entries.get(slab_index) {
-                    if entry.expiration_tick <= self.current_tick {
-                        // Timer has expired
-                        let entry = self.entries.remove(slab_index);
-                        expired_wakers.push(entry.waker);
-                    } else {
-                        // Re-calculate the appropriate level and slot based on remaining delay
-                        let delay = entry.expiration_tick - self.current_tick;
-                        let (new_level, new_slot) = Self::calculate_level_and_slot(delay);
-
-                        if let Some(entry) = self.entries.get_mut(slab_index) {
-                            entry.level = new_level;
-                            entry.slot = new_slot;
-                        }
-                        self.wheels[new_level][new_slot].push(slab_index);
-                    }
-                }
-            }
-        }
-    }
-
-    /// Process a specific slot at level 0
-    fn process_slot_at_level_0(&mut self, slot: usize, expired_wakers: &mut Vec<Waker>) {
-        let timers_to_process: Vec<usize> = std::mem::take(&mut self.wheels[0][slot]);
-
+    /// Process timers at a specific level in the timer wheel
+    #[inline]
+    fn process_slot(&mut self, timers_to_process: Vec<usize>, expired_wakers: &mut Vec<Waker>) {
         for slab_index in timers_to_process {
             if let Some(entry) = self.entries.get(slab_index) {
                 if entry.expiration_tick <= self.current_tick {
-                    // Timer has expired, remove and wake
+                    // Timer has expired
                     let entry = self.entries.remove(slab_index);
                     expired_wakers.push(entry.waker);
                 } else {
-                    // Timer hasn't expired yet, re-insert at appropriate level
+                    // Re-calculate the appropriate level and slot based on remaining delay
                     let delay = entry.expiration_tick - self.current_tick;
                     let (new_level, new_slot) = Self::calculate_level_and_slot(delay);
 
@@ -279,10 +251,25 @@ impl TimingWheel {
         }
     }
 
+    /// Cascade all timers from a specific level down to lower levels
+    fn cascade_level(&mut self, level: usize, expired_wakers: &mut Vec<Waker>) {
+        for slot in 0..SLOTS_PER_LEVEL {
+            let timers_to_cascade: Vec<usize> = std::mem::take(&mut self.wheels[level][slot]);
+            self.process_slot(timers_to_cascade, expired_wakers);
+        }
+    }
+
+    /// Process a specific slot at level 0
+    fn process_slot_at_level_0(&mut self, slot: usize, expired_wakers: &mut Vec<Waker>) {
+        let timers_to_process: Vec<usize> = std::mem::take(&mut self.wheels[0][slot]);
+        self.process_slot(timers_to_process, expired_wakers);
+    }
+
     /// Calculate the appropriate level and slot for a given delay
     #[inline]
     fn calculate_level_and_slot(delay: u64) -> (usize, usize) {
-        for level in 0..NUM_LEVELS {
+        let mut level = 0;
+        loop {
             let level_shift = 6 * level;
 
             if level == NUM_LEVELS - 1 {
@@ -299,13 +286,9 @@ impl TimingWheel {
                     .expect("slot index fits in usize");
                 return (level, slot);
             }
-        }
 
-        // Fallback to top level
-        let level_shift = 6 * (NUM_LEVELS - 1);
-        let slot = usize::try_from((delay >> level_shift) & (SLOTS_PER_LEVEL as u64 - 1))
-            .expect("slot index fits in usize");
-        (NUM_LEVELS - 1, slot)
+            level += 1;
+        }
     }
 }
 
