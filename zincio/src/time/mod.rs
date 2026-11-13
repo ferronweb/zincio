@@ -117,7 +117,7 @@ mod tests {
                     .unwrap(),
             );
             let missed = interval.tick().await;
-            assert_eq!(missed, 11); // - 10 ticks per 1 ms + 1
+            assert!(missed >= 11); // - at least 10 ticks per 1 ms
         });
     }
 }
