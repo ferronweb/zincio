@@ -70,7 +70,8 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     #[test]
     fn fs_read_write_helpers_work() {
-        let runtime = Runtime::new(AnyDriver::new_mock());
+        let runtime =
+            Runtime::new(AnyDriver::new_best().expect("failed to initialize the I/O driver"));
         runtime.block_on(async {
             let path = unique_path("helpers");
             write(&path, b"hello world")
@@ -92,7 +93,8 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     #[test]
     fn file_read_at_and_write_exact_at_work() {
-        let runtime = Runtime::new(AnyDriver::new_mock());
+        let runtime =
+            Runtime::new(AnyDriver::new_best().expect("failed to initialize the I/O driver"));
         runtime.block_on(async {
             let path = unique_path("offset");
             let file = OpenOptions::new()
@@ -121,7 +123,8 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     #[test]
     fn metadata_basic_properties() {
-        let runtime = Runtime::new(AnyDriver::new_mock());
+        let runtime =
+            Runtime::new(AnyDriver::new_best().expect("failed to initialize the I/O driver"));
         runtime.block_on(async {
             let path = unique_path("metadata");
             write(&path, b"test content")
@@ -141,7 +144,8 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     #[test]
     fn metadata_directory() {
-        let runtime = Runtime::new(AnyDriver::new_mock());
+        let runtime =
+            Runtime::new(AnyDriver::new_best().expect("failed to initialize the I/O driver"));
         runtime.block_on(async {
             let path = unique_path("dir");
             std::fs::create_dir(&path).expect("create_dir should succeed");
@@ -157,7 +161,8 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     #[test]
     fn metadata_empty_file() {
-        let runtime = Runtime::new(AnyDriver::new_mock());
+        let runtime =
+            Runtime::new(AnyDriver::new_best().expect("failed to initialize the I/O driver"));
         runtime.block_on(async {
             let path = unique_path("empty");
             let mut file = OpenOptions::new()
@@ -179,7 +184,8 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     #[test]
     fn create_dir_works() {
-        let runtime = Runtime::new(AnyDriver::new_mock());
+        let runtime =
+            Runtime::new(AnyDriver::new_best().expect("failed to initialize the I/O driver"));
         runtime.block_on(async {
             let path = unique_path("create_dir");
             crate::fs::create_dir(&path)
@@ -198,7 +204,8 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     #[test]
     fn create_dir_all_works() {
-        let runtime = Runtime::new(AnyDriver::new_mock());
+        let runtime =
+            Runtime::new(AnyDriver::new_best().expect("failed to initialize the I/O driver"));
         runtime.block_on(async {
             let base = unique_path("create_dir_all");
             let path = base.join("a/b/c");
@@ -227,7 +234,8 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     #[test]
     fn symlink_metadata_works() {
-        let runtime = Runtime::new(AnyDriver::new_mock());
+        let runtime =
+            Runtime::new(AnyDriver::new_best().expect("failed to initialize the I/O driver"));
         runtime.block_on(async {
             let target = unique_path("symlink_target");
             let link = unique_path("symlink");
