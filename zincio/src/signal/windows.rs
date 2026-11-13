@@ -58,8 +58,7 @@ impl Future for CtrlC {
     type Output = io::Result<()>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        // SAFETY: CtrlC is not self-referential.
-        let this = unsafe { self.get_unchecked_mut() };
+        let this = self.get_mut();
         this.poll_recv(cx)
     }
 }

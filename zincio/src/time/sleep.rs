@@ -140,8 +140,7 @@ impl Future for Sleep {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        // Safety: Sleep is !self-referential; it's safe to get a mutable reference.
-        let this = unsafe { self.get_unchecked_mut() };
+        let this = self.get_mut();
 
         if this.fired.get() {
             return Poll::Ready(());
