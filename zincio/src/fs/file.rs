@@ -1,9 +1,7 @@
-use std::cell::RefCell;
 use std::future::poll_fn;
 use std::io::{self, ErrorKind};
 use std::mem::ManuallyDrop;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
 
 use mio::Interest;
 
@@ -601,28 +599,17 @@ async fn read_at_in_blocking_pool<B: IoBufMut>(
         Ok(file) => file,
         Err(e) => return (Err(e), buf),
     };
-    let buf = Arc::new(Mutex::new(RefCell::new(Some(buf))));
-    let buf_clone = buf.clone();
-    crate::spawn_blocking(move || {
-        let mut buf = buf_clone
-            .try_lock()
-            .ok()
-            .and_then(|rc| rc.take())
-            .expect("buf is none");
-        let temp_slice = iobufmut_to_slice(&mut buf);
-        let result = read_at_blocking(&file, temp_slice, offset);
-        (result, buf)
+    let (result, buf) = crate::io::run_blocking_with_state(buf, move |buf| {
+        let temp_slice = iobufmut_to_slice(buf);
+        read_at_blocking(&file, temp_slice, offset)
     })
-    .await
-    .unwrap_or_else(|_| {
-        (
-            Err(blocking_pool_io_error()),
-            buf.try_lock()
-                .ok()
-                .and_then(|rc| rc.take())
-                .expect("buf is none"),
-        )
-    })
+    .await;
+    (
+        result
+            .map_err(|_| io::Error::other("can't spawn blocking task for stdio I/O"))
+            .flatten(),
+        buf,
+    )
 }
 
 #[inline]
@@ -635,28 +622,18 @@ async fn write_at_in_blocking_pool<B: IoBuf>(
         Ok(file) => file,
         Err(e) => return (Err(e), buf),
     };
-    let buf = Arc::new(Mutex::new(RefCell::new(Some(buf))));
-    let buf_clone = buf.clone();
-    crate::spawn_blocking(move || {
-        let buf = buf_clone
-            .try_lock()
-            .ok()
-            .and_then(|rc| rc.take())
-            .expect("buf is none");
-        let temp_slice = iobuf_to_slice(&buf);
-        let result = write_at_blocking(&file, temp_slice, offset);
-        (result, buf)
+
+    let (result, buf) = crate::io::run_blocking_with_state(buf, move |buf| {
+        let temp_slice = iobuf_to_slice(buf);
+        write_at_blocking(&file, temp_slice, offset)
     })
-    .await
-    .unwrap_or_else(|_| {
-        (
-            Err(blocking_pool_io_error()),
-            buf.try_lock()
-                .ok()
-                .and_then(|rc| rc.take())
-                .expect("buf is none"),
-        )
-    })
+    .await;
+    (
+        result
+            .map_err(|_| io::Error::other("can't spawn blocking task for stdio I/O"))
+            .flatten(),
+        buf,
+    )
 }
 
 #[inline]

@@ -230,3 +230,23 @@ where
     let n2 = res2?;
     Ok((n1, n2))
 }
+
+#[inline]
+pub(crate) async fn run_blocking_with_state<S, R>(
+    state: S,
+    f: impl FnOnce(&mut S) -> R + Send + 'static,
+) -> (Result<R, crate::blocking::SpawnBlockingError>, S)
+where
+    R: Send + 'static,
+    S: Send + 'static,
+{
+    let state = std::cell::UnsafeCell::new(state);
+    let state_addr = state.get().addr();
+    let result = crate::spawn_blocking(move || {
+        let state_ptr: *mut S = state_addr as _;
+        let state = unsafe { &mut *state_ptr };
+        f(state)
+    })
+    .await;
+    (result, state.into_inner())
+}

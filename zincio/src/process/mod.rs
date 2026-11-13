@@ -127,70 +127,6 @@ fn make_child_io(fd: RawFd, interest: Interest) -> ChildIo {
     }
 }
 
-#[inline]
-async fn read_in_blocking_pool<R, B>(inner: R, buf: B) -> (io::Result<usize>, R, B)
-where
-    R: Read + Send + 'static,
-    B: IoBufMut,
-{
-    let shared = Arc::new(Mutex::new(RefCell::new(Some((inner, buf)))));
-    let shared_clone = shared.clone();
-    let result = crate::spawn_blocking(move || {
-        let (mut inner, mut buf) = shared_clone
-            .try_lock()
-            .ok()
-            .and_then(|rc| rc.take())
-            .expect("inner/buf is none");
-        let temp_slice = iobufmut_to_slice(&mut buf);
-        let result = inner.read(temp_slice);
-        (result, inner, buf)
-    })
-    .await;
-
-    if let Ok(result) = result {
-        result
-    } else {
-        let (inner, buf) = shared
-            .try_lock()
-            .ok()
-            .and_then(|rc| rc.take())
-            .expect("inner/buf is none");
-        (Err(blocking_pool_io_error()), inner, buf)
-    }
-}
-
-#[inline]
-async fn write_in_blocking_pool<W, B>(inner: W, buf: B) -> (io::Result<usize>, W, B)
-where
-    W: Write + Send + 'static,
-    B: IoBuf,
-{
-    let shared = Arc::new(Mutex::new(RefCell::new(Some((inner, buf)))));
-    let shared_clone = shared.clone();
-    let result = crate::spawn_blocking(move || {
-        let (mut inner, buf) = shared_clone
-            .try_lock()
-            .ok()
-            .and_then(|rc| rc.take())
-            .expect("inner/buf is none");
-        let temp_slice = iobuf_to_slice(&buf);
-        let result = inner.write(temp_slice);
-        (result, inner, buf)
-    })
-    .await;
-
-    if let Ok(result) = result {
-        result
-    } else {
-        let (inner, buf) = shared
-            .try_lock()
-            .ok()
-            .and_then(|rc| rc.take())
-            .expect("inner/buf is none");
-        (Err(blocking_pool_io_error()), inner, buf)
-    }
-}
-
 /// Async-aware child process stdin stream.
 ///
 /// This type wraps `std::process::ChildStdin` and implements `AsyncWrite`
@@ -427,9 +363,19 @@ impl AsyncWrite for ChildStdin {
             let Some(inner) = self.inner.take() else {
                 return (Err(stdio_closed_error()), buf);
             };
-            let (result, inner, buf) = write_in_blocking_pool(inner, buf).await;
+            let (result, (buf, inner)) =
+                crate::io::run_blocking_with_state((buf, inner), |(buf, inner)| {
+                    let temp_slice = iobuf_to_slice(buf);
+                    inner.write(temp_slice)
+                })
+                .await;
             self.inner = Some(inner);
-            (result, buf)
+            (
+                result
+                    .map_err(|_| io::Error::other("can't spawn blocking task for stdio I/O"))
+                    .flatten(),
+                buf,
+            )
         } else {
             let Some(inner) = self.inner.as_mut() else {
                 return (Err(stdio_closed_error()), buf);
@@ -450,31 +396,11 @@ impl AsyncWrite for ChildStdin {
             let Some(inner) = self.inner.take() else {
                 return Err(stdio_closed_error());
             };
-            let shared = Arc::new(Mutex::new(RefCell::new(Some(inner))));
-            let shared_clone = shared.clone();
-            let result = crate::spawn_blocking(move || {
-                let mut inner = shared_clone
-                    .try_lock()
-                    .ok()
-                    .and_then(|rc| rc.take())
-                    .expect("inner is none");
-                let flush_result = inner.flush();
-                (flush_result, inner)
-            })
-            .await;
-
-            if let Ok((flush_result, inner)) = result {
-                self.inner = Some(inner);
-                flush_result
-            } else {
-                let inner = shared
-                    .try_lock()
-                    .ok()
-                    .and_then(|rc| rc.take())
-                    .expect("inner is none");
-                self.inner = Some(inner);
-                Err(blocking_pool_io_error())
-            }
+            let (result, inner) = crate::io::run_blocking_with_state(inner, Write::flush).await;
+            self.inner = Some(inner);
+            result
+                .map_err(|_| io::Error::other("can't spawn blocking task for stdio I/O"))
+                .flatten()
         } else {
             let inner = self.inner.as_mut().ok_or_else(stdio_closed_error)?;
             inner.flush()
@@ -500,9 +426,19 @@ impl AsyncRead for ChildStdout {
             let Some(inner) = self.inner.take() else {
                 return (Err(stdio_closed_error()), buf);
             };
-            let (result, inner, buf) = read_in_blocking_pool(inner, buf).await;
+            let (result, (buf, inner)) =
+                crate::io::run_blocking_with_state((buf, inner), |(buf, inner)| {
+                    let temp_slice = iobufmut_to_slice(buf);
+                    inner.read(temp_slice)
+                })
+                .await;
             self.inner = Some(inner);
-            (result, buf)
+            (
+                result
+                    .map_err(|_| io::Error::other("can't spawn blocking task for stdio I/O"))
+                    .flatten(),
+                buf,
+            )
         } else {
             let Some(inner) = self.inner.as_mut() else {
                 return (Err(stdio_closed_error()), buf);
@@ -532,9 +468,19 @@ impl AsyncRead for ChildStderr {
             let Some(inner) = self.inner.take() else {
                 return (Err(stdio_closed_error()), buf);
             };
-            let (result, inner, buf) = read_in_blocking_pool(inner, buf).await;
+            let (result, (buf, inner)) =
+                crate::io::run_blocking_with_state((buf, inner), |(buf, inner)| {
+                    let temp_slice = iobufmut_to_slice(buf);
+                    inner.read(temp_slice)
+                })
+                .await;
             self.inner = Some(inner);
-            (result, buf)
+            (
+                result
+                    .map_err(|_| io::Error::other("can't spawn blocking task for stdio I/O"))
+                    .flatten(),
+                buf,
+            )
         } else {
             let Some(inner) = self.inner.as_mut() else {
                 return (Err(stdio_closed_error()), buf);
