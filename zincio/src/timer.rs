@@ -49,8 +49,6 @@ struct TimingWheel {
     current_tick: u64,
     /// Generation counter for handling timer reuse
     generation_counter: u64,
-    /// The minimum expiration tick among all entries (for O(1) `nearest_wakeup`)
-    min_expiration_tick: Option<u64>,
     /// Binary heap of (`expiration_tick`, `slab_index`, generation) for O(log n)
     /// min-expiration tracking instead of O(n) scan on remove/expire.
     expiration_heap: BinaryHeap<Reverse<(u64, usize, u64)>>,
@@ -64,7 +62,6 @@ impl TimingWheel {
             wheels: std::array::from_fn(|_| vec![Vec::new(); SLOTS_PER_LEVEL]),
             current_tick: 0,
             generation_counter: 0,
-            min_expiration_tick: None,
             expiration_heap: BinaryHeap::new(),
         }
     }
@@ -86,16 +83,10 @@ impl TimingWheel {
     #[inline]
     pub fn nearest_wakeup(&mut self) -> Option<std::num::NonZeroU64> {
         self.refresh_min_expiration();
-        self.min_expiration_tick.and_then(std::num::NonZeroU64::new)
-    }
-
-    /// Update the minimum expiration tick after an insert
-    #[inline]
-    fn update_min_on_insert(&mut self, expiration_tick: u64) {
-        self.min_expiration_tick = Some(
-            self.min_expiration_tick
-                .map_or(expiration_tick, |min| min.min(expiration_tick)),
-        );
+        self.expiration_heap
+            .peek()
+            .map(|&Reverse((tick, _, _))| tick)
+            .and_then(std::num::NonZeroU64::new)
     }
 
     /// Lazily refresh the minimum expiration tick by popping stale entries
@@ -105,13 +96,11 @@ impl TimingWheel {
         while let Some(&Reverse((_tick, idx, gen))) = self.expiration_heap.peek() {
             if let Some(entry) = self.entries.get(idx) {
                 if entry.generation == gen {
-                    self.min_expiration_tick = Some(entry.expiration_tick);
                     return;
                 }
             }
             self.expiration_heap.pop();
         }
-        self.min_expiration_tick = None;
     }
 
     /// Insert a timer that expires at the given tick
@@ -134,7 +123,6 @@ impl TimingWheel {
         self.wheels[level][slot].push(slab_index);
         self.expiration_heap
             .push(Reverse((expiration_tick, slab_index, generation)));
-        self.update_min_on_insert(expiration_tick);
 
         TimerHandle {
             slab_index,
