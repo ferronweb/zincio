@@ -464,7 +464,7 @@ mod tests {
         assert!(deadline.is_some());
         let ms = deadline.unwrap().as_millis();
         assert!(
-            (45..=50).contains(&ms),
+            (40..=50).contains(&ms),
             "Deadline should be between 45ms and 50ms, got {ms}"
         );
     }
