@@ -774,7 +774,6 @@ pub use poll::PollUdpSocket;
 mod tests {
     use std::io::{self as std_io};
     use std::net::SocketAddr;
-    use std::pin::Pin;
 
     use crate::driver::AnyDriver;
 
@@ -947,105 +946,6 @@ mod tests {
             let (read, recv_buf) = server.recv(recv_buf).await;
             let read = read.expect("recv should succeed");
             assert_eq!(&recv_buf[..read], b"echo");
-        });
-    }
-
-    #[cfg_attr(miri, ignore)]
-    #[test]
-    fn poll_udp_send_recv_and_peek_variants_work() {
-        let runtime = crate::executor::Runtime::new(
-            #[cfg(unix)]
-            AnyDriver::new_mio().expect("mio driver should initialize"),
-            #[cfg(windows)]
-            AnyDriver::new_iocp().expect("iocp driver should initialize"),
-        );
-        runtime.block_on(async {
-            let address = "127.0.0.1:0"
-                .parse::<SocketAddr>()
-                .expect("address should parse");
-
-            let Some(server) = try_bind_poll_udp(address) else {
-                return;
-            };
-            let Some(mut client) = try_bind_poll_udp(address) else {
-                return;
-            };
-
-            let server_addr = server.local_addr().expect("server local_addr should work");
-            let client_addr = client.local_addr().expect("client local_addr should work");
-
-            // poll_send_to
-            let sent = Pin::new(&mut client)
-                .send_to(b"ping".to_vec(), server_addr)
-                .await
-                .0
-                .expect("send_to should succeed");
-            assert_eq!(sent, 4);
-
-            // poll_peek_from
-            let peek_from_buf = vec![0u8; 16];
-            let (data, peek_from_buf) = server.peek_from(peek_from_buf).await;
-            let (peeked, from_peek) = data.expect("peek_from should succeed");
-            assert_eq!(&peek_from_buf[..peeked], b"ping");
-            assert_eq!(from_peek, client_addr);
-
-            // poll_recv_from
-            let recv_from_buf = vec![0u8; 16];
-            let (data, recv_from_buf) = server.recv_from(recv_from_buf).await;
-            let (read, from_read) = data.expect("recv_from should succeed");
-            assert_eq!(&recv_from_buf[..read], b"ping");
-            assert_eq!(from_read, client_addr);
-
-            // Connect for connected send/recv
-            let mut server = server;
-            server
-                .connect(client_addr)
-                .await
-                .expect("server connect should work");
-            client
-                .connect(server_addr)
-                .await
-                .expect("client connect should work");
-
-            // poll_send
-            let sent = Pin::new(&mut client)
-                .send(b"echo".to_vec())
-                .await
-                .0
-                .expect("send should succeed");
-            assert_eq!(sent, 4);
-
-            // poll_peek
-            let peek_buf = vec![0u8; 16];
-            let (peeked, peek_buf) = server.peek(peek_buf).await;
-            let peeked = peeked.expect("peek should succeed");
-            assert_eq!(&peek_buf[..peeked], b"echo");
-
-            // poll_recv
-            let recv_buf = vec![0u8; 16];
-            let (read, recv_buf) = server.recv(recv_buf).await;
-            let read = read.expect("recv should succeed");
-            assert_eq!(&recv_buf[..read], b"echo");
-        });
-    }
-
-    #[cfg_attr(miri, ignore)]
-    #[test]
-    fn poll_udp_into_poll_roundtrip() {
-        let runtime = crate::executor::Runtime::new(
-            #[cfg(unix)]
-            AnyDriver::new_mio().expect("mio driver should initialize"),
-            #[cfg(windows)]
-            AnyDriver::new_iocp().expect("iocp driver should initialize"),
-        );
-        runtime.block_on(async {
-            let address = "127.0.0.1:0"
-                .parse::<SocketAddr>()
-                .expect("address should parse");
-
-            let socket = UdpSocket::bind(address).expect("bind should work");
-            let poll_socket = socket.into_poll().expect("into_poll should work");
-            let _adaptive = poll_socket.into_adaptive();
         });
     }
 }

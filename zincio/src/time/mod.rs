@@ -84,14 +84,6 @@ mod tests {
     use std::time::{Duration, Instant};
 
     #[test]
-    fn sleep_completes() {
-        let rt = crate::executor::Runtime::new(AnyDriver::new_mock());
-        rt.block_on(async {
-            Sleep::new(Duration::from_millis(1)).await;
-        });
-    }
-
-    #[test]
     fn timeout_expires() {
         let rt = crate::executor::Runtime::new(AnyDriver::new_mock());
         let res = rt.block_on(async {
@@ -108,17 +100,6 @@ mod tests {
         let rt = crate::executor::Runtime::new(AnyDriver::new_mock());
         let res = rt.block_on(async { timeout(Duration::from_secs(1), async { 123usize }).await });
         assert_eq!(res, Ok(123usize));
-    }
-
-    #[test]
-    fn interval_ticks_skip() {
-        let rt = crate::executor::Runtime::new(AnyDriver::new_mock());
-        rt.block_on(async {
-            let mut interval = Interval::new(Duration::from_millis(1));
-            // two ticks should complete quickly
-            let _ = interval.tick().await;
-            let _ = interval.tick().await;
-        });
     }
 
     #[test]

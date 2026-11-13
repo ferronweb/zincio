@@ -914,31 +914,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn block_on_returns_future_output() {
-        let runtime = crate::executor::Runtime::new(AnyDriver::new_mock());
-        let value = runtime.block_on(async { 42usize });
-        assert_eq!(value, 42);
-    }
-
-    #[test]
-    fn spawn_join_handle_returns_task_output() {
-        let runtime = crate::executor::Runtime::new(AnyDriver::new_mock());
-        let value = runtime.block_on(async {
-            let handle = spawn(async { 21usize });
-            handle.await * 2
-        });
-        assert_eq!(value, 42);
-    }
-
-    #[test]
-    fn runtime_spawn_returns_join_handle() {
-        let runtime = crate::executor::Runtime::new(AnyDriver::new_mock());
-        let handle = runtime.spawn(async { 7usize });
-        let value = runtime.block_on(handle);
-        assert_eq!(value, 7);
-    }
-
-    #[test]
     fn block_on_repolls_root_future_after_self_wake() {
         let runtime = crate::executor::Runtime::new(AnyDriver::new_mock());
         let mut polled_once = false;

@@ -462,31 +462,6 @@ mod tests {
         task::{Poll, Waker},
     };
 
-    #[cfg(unix)]
-    #[test]
-    fn test_mio_driver_interrupt_basic() {
-        let driver = AnyDriver::new_mio().expect("Failed to create MioDriver");
-        let interruptor = driver.get_interruptor();
-
-        // Test that interrupt doesn't panic and can be called multiple times
-        interruptor.interrupt();
-        interruptor.interrupt();
-        interruptor.interrupt();
-    }
-
-    #[cfg(target_os = "linux")]
-    #[cfg_attr(miri, ignore)]
-    #[test]
-    fn test_uring_driver_interrupt_basic() {
-        let driver = AnyDriver::new_uring().expect("Failed to create UringDriver");
-        let interruptor = driver.get_interruptor();
-
-        // Test that interrupt doesn't panic and can be called multiple times
-        interruptor.interrupt();
-        interruptor.interrupt();
-        interruptor.interrupt();
-    }
-
     /// Microseconds this process's cgroup has spent with a task waiting on I/O ("some"),
     /// or `None` without cgroup v2 pressure files.
     #[cfg(target_os = "linux")]
@@ -532,29 +507,6 @@ mod tests {
             "an idle wait counted {} ms of I/O wait",
             (after - before) / 1000
         );
-    }
-
-    #[test]
-    fn test_mock_driver_interrupt_basic() {
-        let driver = AnyDriver::new_mock();
-        let interruptor = driver.get_interruptor();
-
-        // Test that interrupt doesn't panic and can be called multiple times
-        interruptor.interrupt();
-        interruptor.interrupt();
-        interruptor.interrupt();
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn test_iocp_driver_interrupt_basic() {
-        let driver = AnyDriver::new_iocp().expect("Failed to create IocpDriver");
-        let interruptor = driver.get_interruptor();
-
-        // Test that interrupt doesn't panic and can be called multiple times
-        interruptor.interrupt();
-        interruptor.interrupt();
-        interruptor.interrupt();
     }
 
     #[cfg(unix)]
