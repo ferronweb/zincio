@@ -36,14 +36,15 @@ Contributions are welcome across:
 
 Run from the repository root unless noted:
 
-| Command                                                 | Purpose                                                                              |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `cargo build --workspace`                               | Build all workspace crates                                                           |
-| `cargo test --workspace`                                | Run unit and inline tests                                                            |
-| `cargo test -p <crate>`                                 | Run tests for a single crate                                                         |
-| `cargo fmt --all --check`                               | Check formatting (the repo uses default `rustfmt` settings, no `.rustfmt.toml`)      |
-| `cargo clippy --workspace --all-targets -- -D warnings` | Lint; warnings fail the check                                                        |
-| `npx aislop scan`                                       | Scan for possible AI-generated issues (false positives are possible; requires `npm`) |
+| Command                                                                | Purpose                                                                              |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `cargo build --workspace`                                              | Build all workspace crates                                                           |
+| `cargo test --workspace`                                               | Run unit and inline tests                                                            |
+| `cargo test -p <crate>`                                                | Run tests for a single crate                                                         |
+| `cargo fmt --all --check`                                              | Check formatting (the repo uses default `rustfmt` settings, no `.rustfmt.toml`)      |
+| `cargo clippy --workspace --all-targets -- -D warnings`                | Lint; warnings fail the check                                                        |
+| `MIRIFLAGS="-Zmiri-disable-isolation" cargo miri test -p zincio --lib` | Run miri tests (requires `miri` toolchain and nightly Rust)                          |
+| `npx aislop scan`                                                      | Scan for possible AI-generated issues (false positives are possible; requires `npm`) |
 
 ## Code conventions
 
