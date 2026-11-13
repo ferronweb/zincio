@@ -21,7 +21,6 @@
 
 mod reaper;
 
-use reaper::ZombieReaper;
 pub(crate) use reaper::{start_zombie_reaper, ZombieReaperMessage};
 
 use std::cell::RefCell;
@@ -681,7 +680,6 @@ pub struct Child {
     pub stdin: Option<ChildStdin>,
     pub stdout: Option<ChildStdout>,
     pub stderr: Option<ChildStderr>,
-    reaper: ZombieReaper,
 }
 
 impl Child {
@@ -699,7 +697,6 @@ impl Child {
             stdin,
             stdout,
             stderr,
-            reaper: ZombieReaper::new(),
         }
     }
 
@@ -742,7 +739,7 @@ impl Child {
     pub async fn wait(&mut self) -> io::Result<ExitStatus> {
         let _ = self.stdin.take(); // Similarly to std::process::Child::wait
         let child = self.take_inner()?;
-        self.reaper.wait(child).await
+        self::reaper::zombie_wait(child).await
     }
 
     /// Check if the process has exited without blocking.
@@ -764,7 +761,7 @@ impl Drop for Child {
     fn drop(&mut self) {
         let _ = self.stdin.take(); // Similarly to std::process::Child::wait
         if let Some(child) = self.inner.take() {
-            self.reaper.reap_on_drop(child);
+            self::reaper::zombie_reap_on_drop(child);
         }
     }
 }

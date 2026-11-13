@@ -11,52 +11,40 @@ use std::os::windows::io::AsRawHandle;
 
 use crate::current_zombie_reaper;
 
-pub(crate) struct ZombieReaper;
-
 pub(crate) type ZombieReaperMessage = (
     std::process::Child,
     Option<oneshot::Sender<std::io::Result<ExitStatus>>>,
 );
 
-/// Zombie reaper process that waits on child processes asynchronously.
-impl ZombieReaper {
-    /// Creates a new zombie reaper instance.
-    #[inline]
-    pub(crate) fn new() -> Self {
-        Self
+/// Waits on a child process asynchronously using a zombie reaper.
+#[inline]
+pub(crate) async fn zombie_wait(mut child: std::process::Child) -> io::Result<ExitStatus> {
+    if let Some(reaper_send) = current_zombie_reaper().await {
+        let (sender, recver) = oneshot::async_channel();
+        let _ = reaper_send.send((child, Some(sender))).await;
+        recver
+            .await
+            .map_err(|_| std::io::Error::other("zombie reaper error"))?
+    } else {
+        child.wait()
     }
+}
 
-    /// Waits on a child process asynchronously.
-    #[inline]
-    pub(crate) async fn wait(&self, mut child: std::process::Child) -> io::Result<ExitStatus> {
-        if let Some(reaper_send) = current_zombie_reaper().await {
-            let (sender, recver) = oneshot::async_channel();
-            let _ = reaper_send.send((child, Some(sender))).await;
-            recver
-                .await
-                .map_err(|_| std::io::Error::other("zombie reaper error"))?
-        } else {
-            child.wait()
-        }
+/// Reaps a child process on drop, waiting asynchronously if possible.
+#[inline]
+pub(crate) fn zombie_reap_on_drop(mut child: std::process::Child) {
+    if let Ok(Some(_)) = child.try_wait() {
+        return;
     }
-
-    /// Reaps a child process on drop, waiting asynchronously if possible.
-    #[inline]
-    pub(crate) fn reap_on_drop(&self, mut child: std::process::Child) {
-        let _ = self;
-        if let Ok(Some(_)) = child.try_wait() {
-            return;
-        }
-        if let Poll::Ready(Some(reaper_send)) =
-            Box::pin(current_zombie_reaper()).poll_unpin(&mut Context::from_waker(Waker::noop()))
-        {
-            let (sender, _) = oneshot::async_channel();
-            let _ = reaper_send.try_send((child, Some(sender)));
-        } else {
-            std::thread::spawn(move || {
-                let _ = child.wait();
-            });
-        }
+    if let Poll::Ready(Some(reaper_send)) =
+        Box::pin(current_zombie_reaper()).poll_unpin(&mut Context::from_waker(Waker::noop()))
+    {
+        let (sender, _) = oneshot::async_channel();
+        let _ = reaper_send.try_send((child, Some(sender)));
+    } else {
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
     }
 }
 
