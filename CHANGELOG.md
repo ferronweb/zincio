@@ -1,8 +1,8 @@
 # `zincio` change log
 
-## `zincio` UNRELEASED
+## `zincio` 0.2.30
 
-**Not yet released**
+**Released in November 16, 2026**
 
 - Fixed beyond-EOF (`ERROR_HANDLE_EOF`) file read errors on the IOCP driver on Windows
 - Fixed runtime builder ignoring `io_uring` custom builder when not using `IoUringCustom` driver variant
