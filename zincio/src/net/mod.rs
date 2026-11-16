@@ -63,6 +63,29 @@ use windows_sys::Win32::Networking::WinSock::{
     AF_INET, AF_INET6, SOCKADDR_IN, SOCKADDR_IN6, SOCKADDR_STORAGE,
 };
 
+/// Opens a stream socket that is closed on `exec`, as accepted sockets are: a child
+/// process must not inherit it, or the peer sees no close while the child lives.
+#[cfg(unix)]
+fn new_stream_socket(domain: libc::c_int) -> Result<libc::c_int, std::io::Error> {
+    // `SOCK_CLOEXEC` came with `accept4`: the systems without `accept4` do not take the flag
+    // in `socket` either, so they set `FD_CLOEXEC` afterwards, as `accept` does there.
+    #[cfg(syscall_accept4)]
+    let socket_fd = unsafe { libc::socket(domain, libc::SOCK_STREAM | libc::SOCK_CLOEXEC, 0) };
+    #[cfg(not(syscall_accept4))]
+    let socket_fd = unsafe { libc::socket(domain, libc::SOCK_STREAM, 0) };
+    if socket_fd == -1 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // Without `SOCK_CLOEXEC`, a child started between `socket` and `fcntl` still inherits it.
+    #[cfg(not(syscall_accept4))]
+    if unsafe { libc::fcntl(socket_fd, libc::F_SETFD, libc::FD_CLOEXEC) } == -1 {
+        let error = std::io::Error::last_os_error();
+        unsafe { libc::close(socket_fd) };
+        return Err(error);
+    }
+    Ok(socket_fd)
+}
+
 #[cfg(unix)]
 fn socket_addr_to_raw(
     address: SocketAddr,

@@ -32,10 +32,7 @@ use crate::{fd_inner::InnerRawHandle, net::TcpStream};
 #[cfg(unix)]
 fn bind_one(address: SocketAddr) -> Result<StdTcpListener, io::Error> {
     let (domain, raw_addr, raw_addr_len) = socket_addr_to_raw(address);
-    let socket_fd = unsafe { libc::socket(domain, libc::SOCK_STREAM, 0) };
-    if socket_fd == -1 {
-        return Err(io::Error::last_os_error());
-    }
+    let socket_fd = crate::net::new_stream_socket(domain)?;
 
     let reuse_addr: libc::c_int = 1;
     let reuse_addr_result = unsafe {

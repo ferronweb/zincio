@@ -97,10 +97,7 @@ fn new_socket(
     path: &Path,
 ) -> Result<(StdUnixStream, libc::sockaddr_un, libc::socklen_t), io::Error> {
     let (raw_addr, raw_addr_len) = socket_addr_to_raw(path)?;
-    let socket_fd = unsafe { libc::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0) };
-    if socket_fd == -1 {
-        return Err(io::Error::last_os_error());
-    }
+    let socket_fd = crate::net::new_stream_socket(libc::AF_UNIX)?;
     let stream = unsafe { StdUnixStream::from_raw_fd(socket_fd) };
     Ok((stream, raw_addr, raw_addr_len))
 }
