@@ -2,8 +2,8 @@
 
 [![Static Badge](https://img.shields.io/badge/Documentation-orange?style=flat-square)](https://docs.rs/zincio)
 [![Crates.io](https://img.shields.io/crates/v/zincio?style=flat-square)](https://crates.io/crates/zincio)
-[![GitHub Repo stars](https://img.shields.io/github/stars/ferronweb/ferron?style=flat-square)](https://github.com/ferronweb/zincio)
-[![GitHub License](https://img.shields.io/github/license/ferronweb/ferron?style=flat-square)](https://github.com/ferronweb/zincio/blob/main/LICENSE)
+[![GitHub Repo stars](https://img.shields.io/github/stars/ferronweb/zincio?style=flat-square)](https://github.com/ferronweb/zincio)
+[![GitHub License](https://img.shields.io/github/license/ferronweb/zincio?style=flat-square)](https://github.com/ferronweb/zincio/blob/main/LICENSE)
 
 A high-performance, cross-platform asynchronous runtime for Rust.
 
