@@ -38,10 +38,7 @@ fn new_socket(
     address: SocketAddr,
 ) -> Result<(std::net::TcpStream, libc::sockaddr_storage, libc::socklen_t), io::Error> {
     let (domain, raw_addr, raw_addr_len) = socket_addr_to_raw(address);
-    let socket_fd = unsafe { libc::socket(domain, libc::SOCK_STREAM, 0) };
-    if socket_fd == -1 {
-        return Err(io::Error::last_os_error());
-    }
+    let socket_fd = crate::net::new_stream_socket(domain)?;
     let stream =
         unsafe { std::net::TcpStream::from_raw_fd(std::os::fd::IntoRawFd::into_raw_fd(socket_fd)) };
     Ok((stream, raw_addr, raw_addr_len))
